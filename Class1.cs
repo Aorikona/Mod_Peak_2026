@@ -402,7 +402,6 @@ namespace PeakClassMod
 			{
 				if (character != null && PeakClassModPlugin.mushroomancerActive && character.IsLocal)
 				{
-					// CORRECTION: Seuil à 2% (0.02) car la stamina va de 0 à 1.
 					if (character.data.currentStamina <= 0.02f)
 						TryActivateStaminaZeroMechanic(character);
 				}
@@ -415,16 +414,14 @@ namespace PeakClassMod
 			if (character == null || character.photonView?.Owner == null) return;
 			int actor = character.photonView.Owner.ActorNumber;
 
-			// CORRECTION: Cooldown de 10 secondes
-			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < 2f) return;
+			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < 10f) return;
 
-			// On met à jour le temps MAINTENANT, car l'action se déclenche
 			lastStaminaZeroTime[actor] = Time.time;
 
-			// 1. APPLIQUER LA CURSE (Toujours, si le cooldown est bon)
+			// Curse (toujours appliquée si cooldown ok)
 			character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, 0.02f, false);
 
-			// 2. TENTER DE SPAWN L'ITEM (Seulement si place dans l'inventaire)
+			// Item Spawn (seulement si place)
 			string randomName = ZeroStaminaFungi[UnityEngine.Random.Range(0, ZeroStaminaFungi.Length)];
 			Item fungusItem = ItemCache.Get(randomName);
 
@@ -436,7 +433,6 @@ namespace PeakClassMod
 
 			ushort id = (ushort)fungusItem.itemID;
 
-			// La vérification se fait ici: Si inventaire plein, on ne rentre pas, donc pas d'item.
 			if (character.player != null && character.player.HasEmptySlot(id))
 			{
 				character.player.AddItem(id, null, out _);
@@ -444,7 +440,7 @@ namespace PeakClassMod
 			}
 			else
 			{
-				PeakClassModPlugin.Log?.LogInfo($"[Mushroomancer] Stamina vide ! Curse appliquée mais INVENTAIRE PLEIN (pas de spawn).");
+				PeakClassModPlugin.Log?.LogInfo($"[Mushroomancer] Stamina vide ! Curse appliquée (Inventaire plein).");
 			}
 		}
 
@@ -471,16 +467,43 @@ namespace PeakClassMod
 			}
 		}
 
+		// CORRECTION ICI : Logique de sommeil modifiée
 		public static IEnumerator GreatEpeeStaminaRoutine(Character character)
 		{
+			// Petite sécurité au démarrage
+			yield return new WaitForSeconds(5f);
+
 			while (PeakClassModPlugin.greatEpeeActive && character != null && character.IsLocal)
 			{
-				yield return new WaitForSeconds(UnityEngine.Random.Range(45f, 150f));
-				character.refs.afflictions.AddStatus(CharacterAfflictions.STATUSTYPE.Drowsy, 1f, false);
+				// 1. ATTENTE DU RÉVEIL (Si le joueur a du sommeil, on met le chrono en pause)
+				// Tant que la Drowsy est > 0, on attend.
+				while (character != null && character.refs != null &&
+					   character.refs.afflictions.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Drowsy) > 0.05f)
+				{
+					yield return new WaitForSeconds(1f);
+					if (!PeakClassModPlugin.greatEpeeActive) yield break;
+				}
+
+				if (character == null) yield break;
+
+				// 2. CHRONO (Le joueur est bien réveillé, on lance le compte à rebours)
+				float waitTime = UnityEngine.Random.Range(45f, 150f);
+				PeakClassModPlugin.Log?.LogInfo($"[GreatEpee] Joueur réveillé. Prochain sommeil dans {waitTime:F0} secondes.");
+
+				yield return new WaitForSeconds(waitTime);
+
+				if (character == null || character.refs == null || !PeakClassModPlugin.greatEpeeActive) yield break;
+
+				// 3. APPLICATION DU SOMMEIL
+				// On vérifie une dernière fois qu'il n'est pas retombé dans le sommeil entre temps
+				if (character.refs.afflictions.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Drowsy) < 0.1f)
+				{
+					character.refs.afflictions.AddStatus(CharacterAfflictions.STATUSTYPE.Drowsy, 1f, false);
+					PeakClassModPlugin.Log?.LogInfo("[GreatEpee] Temps écoulé : Le joueur s'endort !");
+				}
 			}
 		}
 	}
-
 	// ==================================================
 	// CLASS IMPLEMENTATIONS
 	// ==================================================
