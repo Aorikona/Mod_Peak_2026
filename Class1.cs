@@ -1,5 +1,5 @@
 ﻿// ============================================================
-// PEAK Class Mod - Version: 3.6.0 (Latency Fix)
+// PEAK Class Mod - Version: 3.6.1 (Stamina Fix)
 // ============================================================
 
 using System;
@@ -19,7 +19,7 @@ using Zorro.Core;
 
 namespace PeakClassMod
 {
-	[BepInPlugin("com.peakmod.classmod", "PEAK Class Mod", "3.6.0")]
+	[BepInPlugin("com.peakmod.classmod", "PEAK Class Mod", "3.6.1")]
 	public class PeakClassModPlugin : BaseUnityPlugin
 	{
 		public static PeakClassModPlugin Instance;
@@ -49,7 +49,7 @@ namespace PeakClassMod
 			GameObject.DontDestroyOnLoad(_callbacksGO);
 			_callbacksGO.AddComponent<PeakClassModCallbacks>();
 
-			Log?.LogInfo("[ClassMod] Ready. Version 3.6.0 loaded (Latency Fix).");
+			Log?.LogInfo("[ClassMod] Ready. Version 3.6.1 loaded (Stamina Fix).");
 		}
 
 		private void OnDestroy()
@@ -58,7 +58,6 @@ namespace PeakClassMod
 			if (_callbacksGO != null) UnityEngine.Object.Destroy(_callbacksGO);
 		}
 
-		// FORCE UnityEngine.Component pour éviter toute confusion
 		public void EnsureComponent<T>(GameObject go) where T : UnityEngine.Component
 		{
 			if (go.GetComponent<T>() == null) go.AddComponent<T>();
@@ -403,8 +402,7 @@ namespace PeakClassMod
 			{
 				if (character != null && PeakClassModPlugin.mushroomancerActive && character.IsLocal)
 				{
-					// CORRECTION : On met 0.02f (2%) pour déclencher uniquement quand la stamina est vide.
-					// On ne remet PAS !fullyPassedOut car c'est ça qui empêchait le spawn au bon moment.
+					// CORRECTION: Seuil à 2% (0.02) car la stamina va de 0 à 1.
 					if (character.data.currentStamina <= 0.02f)
 						TryActivateStaminaZeroMechanic(character);
 				}
@@ -417,39 +415,36 @@ namespace PeakClassMod
 			if (character == null || character.photonView?.Owner == null) return;
 			int actor = character.photonView.Owner.ActorNumber;
 
-			// Cooldown de 5 secondes pour éviter que ça spawn en boucle quand on reste à 0 stamina
-			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < 5f) return;
+			// CORRECTION: Cooldown de 10 secondes
+			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < 2f) return;
 
+			// On met à jour le temps MAINTENANT, car l'action se déclenche
+			lastStaminaZeroTime[actor] = Time.time;
+
+			// 1. APPLIQUER LA CURSE (Toujours, si le cooldown est bon)
+			character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, 0.02f, false);
+
+			// 2. TENTER DE SPAWN L'ITEM (Seulement si place dans l'inventaire)
 			string randomName = ZeroStaminaFungi[UnityEngine.Random.Range(0, ZeroStaminaFungi.Length)];
 			Item fungusItem = ItemCache.Get(randomName);
 
 			if (fungusItem == null)
 			{
-				// Log uniquement en cas d'erreur pour ne pas spammer la console
 				PeakClassModPlugin.Log?.LogWarning($"[Mushroomancer] Erreur: Item '{randomName}' introuvable.");
-				lastStaminaZeroTime[actor] = Time.time;
 				return;
 			}
 
 			ushort id = (ushort)fungusItem.itemID;
 
-			// On essaie d'ajouter l'item
+			// La vérification se fait ici: Si inventaire plein, on ne rentre pas, donc pas d'item.
 			if (character.player != null && character.player.HasEmptySlot(id))
 			{
-				lastStaminaZeroTime[actor] = Time.time;
-
-				// Ajoute la malédiction
-				character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, 0.02f, false);
-
-				// Ajoute l'item
 				character.player.AddItem(id, null, out _);
-
-				PeakClassModPlugin.Log?.LogInfo($"[Mushroomancer] Stamina vide ! Spawn de {randomName}");
+				PeakClassModPlugin.Log?.LogInfo($"[Mushroomancer] Stamina vide ! Curse + Spawn de {randomName}");
 			}
 			else
 			{
-				// Si inventaire plein, on reset le cooldown pour ne pas réessayer instantanément
-				lastStaminaZeroTime[actor] = Time.time;
+				PeakClassModPlugin.Log?.LogInfo($"[Mushroomancer] Stamina vide ! Curse appliquée mais INVENTAIRE PLEIN (pas de spawn).");
 			}
 		}
 
@@ -485,6 +480,7 @@ namespace PeakClassMod
 			}
 		}
 	}
+
 	// ==================================================
 	// CLASS IMPLEMENTATIONS
 	// ==================================================
