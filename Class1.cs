@@ -403,10 +403,12 @@ namespace PeakClassMod
 			{
 				if (character != null && PeakClassModPlugin.mushroomancerActive && character.IsLocal)
 				{
-					if (character.data.currentStamina <= 0.001f && !character.data.fullyPassedOut)
+					// CORRECTION : On met 0.02f (2%) pour déclencher uniquement quand la stamina est vide.
+					// On ne remet PAS !fullyPassedOut car c'est ça qui empêchait le spawn au bon moment.
+					if (character.data.currentStamina <= 0.02f)
 						TryActivateStaminaZeroMechanic(character);
 				}
-				yield return new WaitForSeconds(0.05f);
+				yield return new WaitForSeconds(0.1f);
 			}
 		}
 
@@ -414,20 +416,41 @@ namespace PeakClassMod
 		{
 			if (character == null || character.photonView?.Owner == null) return;
 			int actor = character.photonView.Owner.ActorNumber;
-			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < 2f) return;
+
+			// Cooldown de 5 secondes pour éviter que ça spawn en boucle quand on reste à 0 stamina
+			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < 5f) return;
 
 			string randomName = ZeroStaminaFungi[UnityEngine.Random.Range(0, ZeroStaminaFungi.Length)];
 			Item fungusItem = ItemCache.Get(randomName);
-			if (fungusItem == null) return;
+
+			if (fungusItem == null)
+			{
+				// Log uniquement en cas d'erreur pour ne pas spammer la console
+				PeakClassModPlugin.Log?.LogWarning($"[Mushroomancer] Erreur: Item '{randomName}' introuvable.");
+				lastStaminaZeroTime[actor] = Time.time;
+				return;
+			}
+
 			ushort id = (ushort)fungusItem.itemID;
 
+			// On essaie d'ajouter l'item
 			if (character.player != null && character.player.HasEmptySlot(id))
 			{
 				lastStaminaZeroTime[actor] = Time.time;
+
+				// Ajoute la malédiction
 				character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, 0.02f, false);
+
+				// Ajoute l'item
 				character.player.AddItem(id, null, out _);
+
+				PeakClassModPlugin.Log?.LogInfo($"[Mushroomancer] Stamina vide ! Spawn de {randomName}");
 			}
-			else lastStaminaZeroTime[actor] = Time.time;
+			else
+			{
+				// Si inventaire plein, on reset le cooldown pour ne pas réessayer instantanément
+				lastStaminaZeroTime[actor] = Time.time;
+			}
 		}
 
 		public static IEnumerator GreatEpeePermanentEffects(Character character)
@@ -462,7 +485,6 @@ namespace PeakClassMod
 			}
 		}
 	}
-
 	// ==================================================
 	// CLASS IMPLEMENTATIONS
 	// ==================================================
