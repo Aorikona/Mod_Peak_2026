@@ -487,7 +487,7 @@ namespace PeakClassMod
 				if (character == null) yield break;
 
 				// 2. CHRONO (Le joueur est bien réveillé, on lance le compte à rebours)
-				float waitTime = UnityEngine.Random.Range(45f, 150f);
+				float waitTime = UnityEngine.Random.Range(45f, 90f);
 				PeakClassModPlugin.Log?.LogInfo($"[GreatEpee] Joueur réveillé. Prochain sommeil dans {waitTime:F0} secondes.");
 
 				yield return new WaitForSeconds(waitTime);
