@@ -219,7 +219,7 @@ namespace PeakClassMod
 				}
 			}
 		}
-	}
+	} 
 	// ==================================================
 	// PROTECTION ABSOLUE DE LA SARBACANE (CLIENT FIX)
 	// ==================================================
