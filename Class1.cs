@@ -26,7 +26,7 @@ namespace PeakClassMod
 	{
 		// --- GOBELIN ---
 		// Nom exact trouvé grâce à votre espionnage
-		public const string BLOWGUN_NAME = "HealingDart Variant";
+		public const string BLOWGUN = "HealingDart Variant";
 
 		public const float GOBELIN_SIZE = 0.5f;
 		public const float GOBELIN_CURSE_PER_SHOT = 0.05f;
@@ -128,12 +128,7 @@ namespace PeakClassMod
 				case "Hat_Crab": items.Add("ChainShooter"); items.Add("ChainShooter"); break;
 				case "Hat_NinjaHeadband": items.Add("RopeSpool"); items.Add("RopeSpool"); break;
 				case "Hat_Astronaut": items.Add("BalloonBunch"); break;
-
-				// NOM DU HAT CORRIGÉ (s minuscule)
-				case "Hat_Midsummer":
-					// NOM DE L'ITEM CORRIGÉ (via constante)
-					items.Add(ClassBalance.BLOWGUN_NAME);
-					break;
+				case "Hat_Midsummer":items.Add(ClassBalance.BLOWGUN); items.Add("MagicBean"); break;
 			}
 			return items;
 		}
@@ -142,73 +137,85 @@ namespace PeakClassMod
 	}
 
 	// ==================================================
-	// GOBELIN DIET
+	// GOBELIN DIET (VERSION TAGS OPTIMISÉE)
 	// ==================================================
 	internal static class GobelinDiet
 	{
-		private static readonly string[] ForbiddenWords = new string[]
+		public static bool IsPackagedFood(Item item)
 		{
-			"Packaged", "Airplane", "Can", "Soda", "Candy", "Chip", "Cookie", "Snack", "Chocolate"
-		};
+			if (item == null) return false;
 
-		public static bool IsPackagedFood(string itemName)
-		{
-			if (string.IsNullOrEmpty(itemName)) return false;
-			string cleanName = itemName.Replace("(Clone)", "").Trim();
+			// On vérifie si l'objet possède le tag "PackagedFood"
+			// C'est une opération binaire (Bitwise check) car c'est un enum [Flags]
+			bool hasTag = (item.itemTags & Item.ItemTags.PackagedFood) != 0;
 
-			foreach (var word in ForbiddenWords)
-			{
-				if (cleanName.IndexOf(word, StringComparison.OrdinalIgnoreCase) >= 0)
-					return true;
-			}
-			return false;
+			return hasTag;
 		}
 	}
 
 
 	// ==================================================
-	// GOBELIN INFINITE ITEM FIX
+	// GOBELIN INFINITE ITEM FIX (CORRIGÉ)
 	// ==================================================
 
 	[HarmonyPatch(typeof(Item), "Consume")]
 	public class GobelinInfiniteConsumePatch
 	{
-		// On utilise Prefix pour s'interposer AVANT que le jeu ne supprime l'objet
 		static bool Prefix(Item __instance)
 		{
-			// Sécurité : si l'item ou le personnage n'existe pas, on laisse le jeu faire
+			// Sécurité de base
 			if (__instance == null || __instance.holderCharacter == null) return true;
 
-			// 1. Vérifier si c'est un Gobelin
+			// 1. Est-ce un Gobelin ?
 			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter))
 			{
-				// 2. Vérifier si l'objet est la Sarbacane (Blowgun)
-				// On utilise IndexOf pour être souple sur le nom (ex: "HealingDart Variant(Clone)")
-				if (__instance.name.IndexOf(ClassBalance.BLOWGUN_NAME, StringComparison.OrdinalIgnoreCase) >= 0)
+				// 2. Est-ce la Sarbacane ?
+				if (__instance.name.IndexOf(ClassBalance.BLOWGUN, StringComparison.OrdinalIgnoreCase) >= 0)
 				{
-					// C'est confirmé : Gobelin + Sarbacane.
+					// --- MANUELLEMENT FINIR L'ACTION ---
 
-					// --- PARTIE 1 : Appliquer la Malédiction (Curse) ---
-					// Comme on bloque la fonction Consume, on doit appliquer nos effets ici manuellement.
+					// A. Mettre à jour le timer (pour dire "c'est bon, il a tiré")
+					__instance.holderCharacter.data.lastConsumedItem = Time.time;
+
+					// B. DÉBLOQUER L'ANIMATION (C'est ça qui bloquait !)
+					// On dit à l'animateur : "L'objet est consommé, reviens en position normale"
+					if (__instance.holderCharacter.refs != null && __instance.holderCharacter.refs.animator != null)
+					{
+						__instance.holderCharacter.refs.animator.SetBool("Consumed Item", true);
+					}
+
+					// --- APPLIQUER NOTRE LOGIQUE ---
+
 					if (__instance.holderCharacter.IsLocal)
 					{
+						// Appliquer la Curse
 						__instance.holderCharacter.refs?.afflictions?.AddStatus(
 							CharacterAfflictions.STATUSTYPE.Curse,
 							ClassBalance.GOBELIN_CURSE_PER_SHOT,
 							false);
 
-						PeakClassModPlugin.Log?.LogInfo("[Gobelin] Tir effectué ! (Munition préservée)");
+						PeakClassModPlugin.Log?.LogInfo("[Gobelin] Tir infini effectué !");
+
+						// C. SÉCURITÉ SUPPLÉMENTAIRE (Reset des données d'utilisation)
+						// Si l'objet a un compteur interne "nombre d'utilisations", on le remplit à nouveau
+						// pour que CanUsePrimary() retourne toujours true.
+						try
+						{
+							var usesData = __instance.GetData<OptionableIntItemData>(DataEntryKey.ItemUses);
+							if (usesData != null && usesData.HasData && usesData.Value == 0)
+							{
+								usesData.Value = 1; // On redonne 1 munition virtuelle
+							}
+						}
+						catch { }
 					}
 
-					// --- PARTIE 2 : Bloquer la suppression ---
-					// En retournant 'false', on dit à Harmony : 
-					// "N'exécute PAS la méthode originale Consume()".
-					// Donc : pas de EmptySlot(), pas de SetActive(false). L'objet reste.
+					// --- BLOQUER LA DESTRUCTION ---
+					// On retourne false pour empêcher "EmptySlot" et "SetActive(false)"
 					return false;
 				}
 			}
 
-			// Si ce n'est pas le cas (autre classe ou autre objet), on exécute la méthode normale (return true)
 			return true;
 		}
 	}
@@ -219,13 +226,15 @@ namespace PeakClassMod
 		static bool Prefix(Item __instance)
 		{
 			if (__instance == null || __instance.holderCharacter == null) return true;
+
 			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter))
 			{
+				// On vérifie si c'est de la nourriture ET si c'est "PackagedFood" via les tags
 				if (__instance.GetComponent<Action_RestoreHunger>() != null &&
-					GobelinDiet.IsPackagedFood(__instance.name))
+					GobelinDiet.IsPackagedFood(__instance)) // Nouvelle méthode
 				{
-					PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Refusé: {__instance.name}");
-					return false; // Bloque
+					// PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Beurk ! Nourriture industrielle refusée : {__instance.name}");
+					return false; // Bloque l'action
 				}
 			}
 			return true;
@@ -239,13 +248,13 @@ namespace PeakClassMod
 		static bool Prefix(Item __instance)
 		{
 			if (__instance == null || __instance.holderCharacter == null) return true;
+
 			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter))
 			{
 				if (__instance.GetComponent<Action_RestoreHunger>() != null &&
-					GobelinDiet.IsPackagedFood(__instance.name))
+					GobelinDiet.IsPackagedFood(__instance)) // Nouvelle méthode
 				{
-					PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Refusé: {__instance.name}");
-					return false; // Bloque
+					return false; // Bloque l'action
 				}
 			}
 			return true;
@@ -622,12 +631,43 @@ namespace PeakClassMod
 				else if (ClassManager.IsScoutActive()) amount *= ClassBalance.SCOUT_HUNGER_MULT;
 				else if (ClassManager.IsGeneralActive()) amount *= ClassBalance.GENERAL_HUNGER_MULT;
 			}
+			// --- GOBELIN IMMUNITY (NOUVEAU) ---
+			if (ClassCheckUtil.IsGobelin(ch))
+			{
+				// Si on essaie d'ajouter des Spores au Gobelin
+				if (statusType == CharacterAfflictions.STATUSTYPE.Spores)
+				{
+					amount = 0f; // On annule le montant
+					return false; // On bloque l'exécution
+				}
+			}
 			if (ClassCheckUtil.IsTechPriest(ch) && ClassManager.IsTechPriestActive())
 			{
 				if (statusType == CharacterAfflictions.STATUSTYPE.Hunger) amount = 0f;
 				else if (statusType == CharacterAfflictions.STATUSTYPE.Weight) { amount = 0f; return false; }
 			}
 			if (statusType == CharacterAfflictions.STATUSTYPE.Poison && ClassCheckUtil.IsMushroom(ch)) amount = 0f;
+			return true;
+		
+
+		}
+	}
+	[HarmonyPatch(typeof(CharacterAfflictions), "AddAffliction")]
+	public class GobelinSporeAfflictionPatch
+	{
+		static bool Prefix(CharacterAfflictions __instance, Affliction affliction)
+		{
+			if (__instance == null || __instance.character == null || affliction == null) return true;
+
+			if (ClassCheckUtil.IsGobelin(__instance.character))
+			{
+				string name = affliction.GetType().Name;
+				// Bloque la confusion et tout ce qui contient "Spore" dans le nom du script
+				if (name.Contains("Confus") || name.Contains("Spore"))
+				{
+					return false; // Bloque l'effet
+				}
+			}
 			return true;
 		}
 	}
