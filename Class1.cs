@@ -51,7 +51,7 @@ namespace PeakClassMod
 		public const float SCOUT_HUNGER_MULT = 1.7f;
 		public const float SCOUT_WEIGHT_MULT = 0.5f;
 
-		public const float ROGUE_STAMINA_MULT = 2.0f;
+		public const float ROGUE_STAMINA_MULT = 1.7f;
 		public const int ROGUE_EXTRA_JUMPS = 2;
 
 		public const float GREATEPEE_SLEEP_MIN = 45f;
@@ -183,35 +183,7 @@ namespace PeakClassMod
 					{
 						__instance.holderCharacter.refs.animator.SetBool("Consumed Item", true);
 					}
-
-					// --- APPLIQUER NOTRE LOGIQUE ---
-
-					if (__instance.holderCharacter.IsLocal)
-					{
-						// Appliquer la Curse
-						__instance.holderCharacter.refs?.afflictions?.AddStatus(
-							CharacterAfflictions.STATUSTYPE.Curse,
-							ClassBalance.GOBELIN_CURSE_PER_SHOT,
-							false);
-
-						PeakClassModPlugin.Log?.LogInfo("[Gobelin] Tir infini effectué !");
-
-						// C. SÉCURITÉ SUPPLÉMENTAIRE (Reset des données d'utilisation)
-						// Si l'objet a un compteur interne "nombre d'utilisations", on le remplit à nouveau
-						// pour que CanUsePrimary() retourne toujours true.
-						try
-						{
-							var usesData = __instance.GetData<OptionableIntItemData>(DataEntryKey.ItemUses);
-							if (usesData != null && usesData.HasData && usesData.Value == 0)
-							{
-								usesData.Value = 1; // On redonne 1 munition virtuelle
-							}
-						}
-						catch { }
-					}
-
-					// --- BLOQUER LA DESTRUCTION ---
-					// On retourne false pour empêcher "EmptySlot" et "SetActive(false)"
+			
 					return false;
 				}
 			}
@@ -219,6 +191,89 @@ namespace PeakClassMod
 			return true;
 		}
 	}
+
+	// ==================================================
+	// APPLICATION DE LA CURSE AU TIR (FIABLE)
+	// ==================================================
+	[HarmonyPatch(typeof(Item), "FinishCastPrimary")]
+	public class GobelinCurseOnShootPatch
+	{
+		static void Postfix(Item __instance)
+		{
+			// Sécurité
+			if (__instance == null || __instance.holderCharacter == null) return;
+
+			// On ne l'applique que pour le joueur Local (pour ne pas curse les autres sur mon écran)
+			if (__instance.holderCharacter.IsLocal && ClassCheckUtil.IsGobelin(__instance.holderCharacter))
+			{
+				// Vérifier si c'est la Sarbacane
+				if (__instance.name.IndexOf(ClassBalance.BLOWGUN, StringComparison.OrdinalIgnoreCase) >= 0)
+				{
+					// Appliquer la Curse
+					__instance.holderCharacter.refs?.afflictions?.AddStatus(
+						CharacterAfflictions.STATUSTYPE.Curse,
+						ClassBalance.GOBELIN_CURSE_PER_SHOT,
+						false);
+
+					// PeakClassModPlugin.Log?.LogInfo("[Gobelin] Pan ! Curse appliquée.");
+				}
+			}
+		}
+	}
+	// ==================================================
+	// PROTECTION ABSOLUE DE LA SARBACANE (CLIENT FIX)
+	// ==================================================
+	[HarmonyPatch(typeof(Item), "Update")]
+	public class GobelinBlowgunEnforcer
+	{
+		static void Postfix(Item __instance)
+		{
+			// Sécurité de base
+			if (__instance == null || __instance.holderCharacter == null) return;
+
+			// On ne le fait que si c'est tenu par un Gobelin LOCAL (pour éviter de casser les autres)
+			if (__instance.holderCharacter.IsLocal && ClassCheckUtil.IsGobelin(__instance.holderCharacter))
+			{
+				// Est-ce la Sarbacane ?
+				if (__instance.name.IndexOf(ClassBalance.BLOWGUN, StringComparison.OrdinalIgnoreCase) >= 0)
+				{
+					// 1. Forcer "destroyOnUse" à faux via Reflection
+					// Cela empêche le jeu de marquer l'objet comme "à détruire"
+					var trav = Traverse.Create(__instance);
+					var field = trav.Field("destroyOnUse");
+					if (field.FieldExists() && field.GetValue<bool>() == true)
+					{
+						field.SetValue(false);
+					}
+
+					// 2. Forcer "totalUses" à -1 (Infini) dans les données de l'objet
+					// Cela empêche le compteur de munitions de descendre
+					try
+					{
+						if (__instance.data != null)
+						{
+							// On cherche l'entrée de données "ItemUses"
+							if (__instance.HasData(DataEntryKey.ItemUses))
+							{
+								var usesData = __instance.GetData<OptionableIntItemData>(DataEntryKey.ItemUses);
+								if (usesData != null)
+								{
+									// Si ce n'est pas déjà infini (-1), on le force
+									if (usesData.Value != -1)
+									{
+										usesData.Value = -1;
+										// PeakClassModPlugin.Log?.LogInfo("[Gobelin] Munitions forcées à INFINI (-1)");
+									}
+								}
+							}
+						}
+					}
+					catch { }
+				}
+			}
+		}
+	}
+
 	[HarmonyPatch(typeof(Item), "StartUsePrimary")]
 	[HarmonyPriority(Priority.High)]
 	public class GobelinFoodBlockerPrimary
@@ -260,29 +315,92 @@ namespace PeakClassMod
 			return true;
 		}
 	}
+	// ==================================================
+	// EMPÊCHER DE NOURRIR LE GOBELIN (FIXED)
+	// ==================================================
+	[HarmonyPatch(typeof(Item), "StartUseSecondary")]
+	public class GobelinAntiFeedPatch
+	{
+		static bool Prefix(Item __instance)
+		{
+			if (__instance == null) return true;
+
+			// 1. Est-ce de la nourriture industrielle ?
+			if (__instance.GetComponent<Action_RestoreHunger>() != null &&
+				GobelinDiet.IsPackagedFood(__instance))
+			{
+				// 2. Accéder au système d'interaction
+				var interact = Interaction.instance;
+				if (interact == null) return true;
+
+				// 3. REFLECTION : On force l'accès à la variable interne 'bestCharacter'
+				// On utilise Traverse pour lire le champ "bestCharacter" dans l'instance Interaction
+				var bestCharInteractible = Traverse.Create(interact).Field("bestCharacter").GetValue<MonoBehaviour>();
+
+				// Si on vise quelqu'un (bestCharacter n'est pas null)
+				if (bestCharInteractible != null)
+				{
+					// 4. On récupère le "Character" à l'intérieur de CharacterInteractible
+					// (On suppose que CharacterInteractible a un champ public 'character')
+					// Comme on n'a pas le type CharacterInteractible, on utilise aussi Traverse par sécurité
+					var targetChar = Traverse.Create(bestCharInteractible).Field("character").GetValue<Character>();
+
+					// 5. Vérification finale : Si la cible est un Gobelin
+					if (targetChar != null && ClassCheckUtil.IsGobelin(targetChar))
+					{
+						// PeakClassModPlugin.Log?.LogInfo($"[Anti-Feed] Bloqué : On ne nourrit pas le Gobelin !");
+						return false; // BLOQUE L'ACTION
+					}
+				}
+			}
+			return true;
+		}
+	}
 
 	public class GobelinSizeHandler : MonoBehaviour
 	{
 		private Character _character;
-		private bool _sizeApplied = false;
 		private float _lastCheckTime = 0f;
-		private void Start() { _character = GetComponent<Character>(); }
+
+		private void Start()
+		{
+			_character = GetComponent<Character>();
+		}
+
 		private void Update()
 		{
-			if (Time.time - _lastCheckTime < ClassBalance.SIZE_CHECK_INTERVAL) return;
+			// Vérification fréquente (toutes les 0.2s)
+			if (Time.time - _lastCheckTime < 0.2f) return;
 			_lastCheckTime = Time.time;
-			if (_character == null || !_character.IsLocal) return;
 
-			bool isGob = ClassManager.IsGobelinActive();
-			if (isGob && !_sizeApplied)
+			if (_character == null) return;
+
+			// 1. Est-ce que ce personnage doit être un Gobelin ?
+			bool shouldBeSmall = false;
+
+			if (_character.IsLocal)
 			{
-				_character.transform.localScale = Vector3.one * ClassBalance.GOBELIN_SIZE;
-				_sizeApplied = true;
+				// Pour MOI : Je regarde ma classe active
+				shouldBeSmall = ClassManager.IsGobelinActive();
 			}
-			else if (!isGob && _sizeApplied)
+			else
 			{
-				_character.transform.localScale = Vector3.one;
-				_sizeApplied = false;
+				// Pour les AUTRES : Je regarde leur chapeau
+				shouldBeSmall = ClassCheckUtil.IsGobelin(_character);
+			}
+
+			// 2. Application FORCE BRUTE
+			// On regarde la taille actuelle. Si elle est différente de la cible, on force.
+			// Vector3.one = (1,1,1) | GOBELIN_SIZE = 0.5
+
+			float currentScale = _character.transform.localScale.x; // On regarde juste X par simplicité
+			float targetScale = shouldBeSmall ? ClassBalance.GOBELIN_SIZE : 1f;
+
+			// Si la différence est significative (plus de 0.05), on corrige
+			if (Mathf.Abs(currentScale - targetScale) > 0.05f)
+			{
+				_character.transform.localScale = Vector3.one * targetScale;
+				// PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Correction de taille appliquée sur {_character.name}");
 			}
 		}
 	}
@@ -445,7 +563,8 @@ namespace PeakClassMod
 		public static void ActivateRogueClass() { ResetAllFlags(); PeakClassModPlugin.rogueActive = true; PeakClassModPlugin.currentClass = "Rogue"; if (Character.localCharacter != null) Character.localCharacter.data.jumpsRemaining = ClassBalance.ROGUE_EXTRA_JUMPS; }
 		public static void ActivateGeneralClass() { ResetAllFlags(); PeakClassModPlugin.generalActive = true; PeakClassModPlugin.currentClass = "General"; }
 		public static void ActivateAstronautClass() { ResetAllFlags(); PeakClassModPlugin.astronautActive = true; PeakClassModPlugin.currentClass = "Astronaut"; }
-		public static void ActivateGobelinClass() { ResetAllFlags(); PeakClassModPlugin.gobelinActive = true; PeakClassModPlugin.currentClass = "Gobelin"; if (Character.localCharacter != null) Character.localCharacter.transform.localScale = Vector3.one * ClassBalance.GOBELIN_SIZE; }
+		public static void ActivateGobelinClass() { ResetAllFlags(); PeakClassModPlugin.gobelinActive = true; PeakClassModPlugin.currentClass = "Gobelin"; }
+
 		public static void DeactivateAllClasses() { ResetAllFlags(); if (Character.localCharacter != null) Character.localCharacter.data.jumpsRemaining = 1; }
 
 		public static bool IsScoutActive() => PeakClassModPlugin.scoutActive;
@@ -461,6 +580,7 @@ namespace PeakClassMod
 		private static readonly string[] ZeroStaminaFungi = new[] { "ShelfShroom", "BounceShroom", "CloudFungus" };
 
 		public static void StartMushroomancerWatch(Character character) { if (character != null) _mushroomCoroutine = character.StartCoroutine(MushroomancerLocalStaminaWatch(character)); }
+
 		public static void StartGreatEpeeRoutines(Character character)
 		{
 			if (character != null)
@@ -470,11 +590,29 @@ namespace PeakClassMod
 			}
 		}
 
+		// --- CORRECTION MUSHROOMANCER ---
 		public static IEnumerator MushroomancerLocalStaminaWatch(Character character)
 		{
 			while (character != null && PeakClassModPlugin.mushroomancerActive && character.IsLocal)
 			{
-				if (character.data.currentStamina <= 0.02f) TryActivateStaminaZeroMechanic(character);
+				// Vérification basée sur le code source DnSpy :
+				// On vérifie si le joueur est évanoui (PassedOut) OU mort.
+				bool isKnockedOut = false;
+
+				if (character.data != null)
+				{
+					if (character.data.passedOut || character.data.fullyPassedOut || character.data.dead)
+					{
+						isKnockedOut = true;
+					}
+				}
+
+				// On applique la punition SEULEMENT si le joueur est conscient (debout)
+				if (!isKnockedOut && character.data.currentStamina <= 0.02f)
+				{
+					TryActivateStaminaZeroMechanic(character);
+				}
+
 				yield return new WaitForSeconds(0.1f);
 			}
 		}
@@ -486,7 +624,9 @@ namespace PeakClassMod
 			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < ClassBalance.MUSHROOM_STAMINA_COOLDOWN) return;
 			lastStaminaZeroTime[actor] = Time.time;
 
+			// La punition est active ici
 			character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MUSHROOM_CURSE_AMOUNT, false);
+
 			string randomName = ZeroStaminaFungi[UnityEngine.Random.Range(0, ZeroStaminaFungi.Length)];
 			Item fungusItem = ItemCache.Get(randomName);
 			if (fungusItem == null) return;
