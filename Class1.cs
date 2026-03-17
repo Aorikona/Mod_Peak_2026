@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // PEAK Class Mod - Version: 5.1.0 (Gobelin Infinite Fix)
 // ============================================================
 
@@ -54,8 +54,8 @@ namespace PeakClassMod
 		public const float ROGUE_STAMINA_MULT = 1.7f;
 		public const int ROGUE_EXTRA_JUMPS = 2;
 
-		public const float GREATEPEE_SLEEP_MIN = 45f;
-		public const float GREATEPEE_SLEEP_MAX = 150f;
+		public const float GREATEPEE_SLEEP_MIN = 30f;
+		public const float GREATEPEE_SLEEP_MAX = 60f;
 		public const float GREATEPEE_EFFECT_DURATION = 99999f;
 
 		public const float MUSHROOM_STAMINA_COOLDOWN = 10f;
@@ -219,9 +219,9 @@ namespace PeakClassMod
 				}
 			}
 		}
-	} 
+	}
 	// ==================================================
-	// PROTECTION ABSOLUE DE LA SARBACANE (CLIENT FIX)
+	// PROTECTION ABSOLUE DE LA SARBACANE (CLIENT FIX & SOULBOUND V2)
 	// ==================================================
 	[HarmonyPatch(typeof(Item), "Update")]
 	public class GobelinBlowgunEnforcer
@@ -229,42 +229,87 @@ namespace PeakClassMod
 		static void Postfix(Item __instance)
 		{
 			// Sécurité de base
-			if (__instance == null || __instance.holderCharacter == null) return;
+			if (__instance == null) return;
 
-			// On ne le fait que si c'est tenu par un Gobelin LOCAL (pour éviter de casser les autres)
-			if (__instance.holderCharacter.IsLocal && ClassCheckUtil.IsGobelin(__instance.holderCharacter))
+			// On ne s'intéresse qu'aux sarbacanes
+			if (__instance.name.IndexOf(ClassBalance.BLOWGUN, StringComparison.OrdinalIgnoreCase) >= 0)
 			{
-				// Est-ce la Sarbacane ?
-				if (__instance.name.IndexOf(ClassBalance.BLOWGUN, StringComparison.OrdinalIgnoreCase) >= 0)
-				{
-					// 1. Forcer "destroyOnUse" à faux via Reflection
-					// Cela empêche le jeu de marquer l'objet comme "à détruire"
-					var trav = Traverse.Create(__instance);
-					var field = trav.Field("destroyOnUse");
-					if (field.FieldExists() && field.GetValue<bool>() == true)
-					{
-						field.SetValue(false);
-					}
+				Character holder = __instance.holderCharacter;
+				bool heldByGobelin = holder != null && ClassCheckUtil.IsGobelin(holder);
 
-					// 2. Forcer "totalUses" à -1 (Infini) dans les données de l'objet
-					// Cela empêche le compteur de munitions de descendre
-					try
+				// --- CAS 1 : TENU PAR UN GOBELIN ---
+				if (heldByGobelin)
+				{
+					// A. Logique Infini (Seulement Local pour éviter conflits réseau)
+					if (holder.IsLocal)
 					{
-						if (__instance.data != null)
+						var trav = Traverse.Create(__instance);
+						var field = trav.Field("destroyOnUse");
+						// On force la NON-destruction
+						if (field.FieldExists() && field.GetValue<bool>() == true)
 						{
-							// On cherche l'entrée de données "ItemUses"
-							if (__instance.HasData(DataEntryKey.ItemUses))
+							field.SetValue(false);
+						}
+
+						// On force les munitions à -1 (infini)
+						try
+						{
+							if (__instance.data != null && __instance.HasData(DataEntryKey.ItemUses))
 							{
 								var usesData = __instance.GetData<OptionableIntItemData>(DataEntryKey.ItemUses);
-								if (usesData != null)
-								{
-									// Si ce n'est pas déjà infini (-1), on le force
-									if (usesData.Value != -1)
-									{
-										usesData.Value = -1;
-										// PeakClassModPlugin.Log?.LogInfo("[Gobelin] Munitions forcées à INFINI (-1)");
-									}
-								}
+								if (usesData != null && usesData.Value != -1) usesData.Value = -1;
+							}
+						}
+						catch { }
+					}
+
+					// B. Logique Soulbound (Restrictions d'inventaire)
+					if (__instance.UIData != null)
+					{
+						__instance.UIData.canDrop = false;        // Touche G interdite
+						__instance.UIData.canBackpack = false;    // Interdit de mettre dans le sac (pour donner)
+						__instance.UIData.canThrow = false;       // Interdit de lancer
+
+
+						// CORRECTION CRITIQUE ICI :
+						__instance.UIData.canPocket = true;       // DOIT ÊTRE TRUE sinon l'objet tombe quand on l'équipe !
+					}
+				}
+				// --- CAS 2 : TENU PAR QUELQU'UN D'AUTRE (OU AU SOL) ---
+				else
+				{
+					// Si ce n'est pas un Gobelin qui la tient, on remet tout à la normale.
+					// C'est crucial si le Gobelin meurt et lâche son arme.
+
+					// 1. Réactiver les mouvements d'inventaire
+					if (__instance.UIData != null)
+					{
+						__instance.UIData.canDrop = true;
+						__instance.UIData.canBackpack = true;
+						__instance.UIData.canThrow = true;
+
+						__instance.UIData.canPocket = true;
+					}
+
+					// 2. RETIRER L'INFINI (Correction du bug pour les autres joueurs)
+					// On remet la destruction active
+					var trav = Traverse.Create(__instance);
+					var field = trav.Field("destroyOnUse");
+					if (field.FieldExists())
+					{
+						// On remet à TRUE (l'objet doit se détruire après usage pour les non-Gobelins)
+						field.SetValue(true);
+					}
+
+					// On remet les munitions à 1 (usage unique) si elles étaient à -1
+					try
+					{
+						if (__instance.data != null && __instance.HasData(DataEntryKey.ItemUses))
+						{
+							var usesData = __instance.GetData<OptionableIntItemData>(DataEntryKey.ItemUses);
+							if (usesData != null && usesData.Value == -1)
+							{
+								usesData.Value = 1;
 							}
 						}
 					}
@@ -420,7 +465,6 @@ namespace PeakClassMod
 		private void Start() { if (photonView != null && photonView.IsMine && !_hasRequestedItems) { _hasRequestedItems = true; StartCoroutine(RequestItemsRoutine()); } }
 		private void OnDestroy() { if (_character?.photonView?.Owner != null) _characterCache.Remove(_character.photonView.Owner.ActorNumber); }
 		public static void ClearPlayerCache(int actorNumber) { _characterCache.Remove(actorNumber); _hostGiveCooldown.Remove(actorNumber); HasReceivedStartItems.Remove(actorNumber); }
-		public static void ResetAllCaches() { _characterCache.Clear(); _hostGiveCooldown.Clear(); HasReceivedStartItems.Clear(); }
 
 		private IEnumerator RequestItemsRoutine()
 		{
@@ -442,7 +486,10 @@ namespace PeakClassMod
 		{
 			if (!PhotonNetwork.IsMasterClient) return;
 			int actorID = info.Sender.ActorNumber;
-			if (HasReceivedStartItems.Contains(actorID)) return; // Prevent multiple distributions
+
+			// Si le joueur a déjà reçu ses items de départ dans cette run, on ignore
+			if (HasReceivedStartItems.Contains(actorID)) return;
+
 			if (_hostGiveCooldown.TryGetValue(actorID, out float lastTime)) if (Time.time - lastTime < ClassBalance.ITEM_GIVE_COOLDOWN) return;
 			_hostGiveCooldown[actorID] = Time.time;
 			StartCoroutine(HostGiveItemsRoutine(clientHatName, info.Sender));
@@ -457,7 +504,10 @@ namespace PeakClassMod
 			if (_characterCache.TryGetValue(actorNumber, out Character cachedChar) && cachedChar != null) targetChar = cachedChar;
 			else foreach (var ch in Character.AllCharacters) if (ch?.photonView?.Owner == requestor) { targetChar = ch; _characterCache[actorNumber] = ch; break; }
 			if (targetChar?.player == null) yield break;
+
+			// On marque le joueur comme ayant reçu ses items de départ
 			HasReceivedStartItems.Add(actorNumber);
+
 			foreach (var itemName in itemsToGive)
 			{
 				var item = ItemCache.Get(itemName);
@@ -500,7 +550,7 @@ namespace PeakClassMod
 		public static bool IsGreatEpeeHat(Character ch) => HatUtils.HasHat(ch, "Hat_Propeller");
 		public static bool IsAstronaut(Character ch) => HatUtils.HasHat(ch, "Hat_Astronaut");
 		public static bool IsGobelin(Character ch) => HatUtils.HasAnyHat(ch, "Hat_Midsummer"); // Corrected
-		public static bool IsScout(Character ch) => HatUtils.HasHat(ch, "Hat_Scout");
+		public static bool IsScout(Character ch) => HatUtils.HasHat(ch, "Hat_Scoutmaster");
 	}
 
 	internal static class ItemCache
@@ -614,11 +664,7 @@ namespace PeakClassMod
 				// On applique la punition SEULEMENT si le joueur est conscient (debout)
 				if (!isKnockedOut && character.data.currentStamina <= 0.02f)
 				{
-					// Se déclenche seulement si le joueur est au sol et ne court pas
-					if (character.data.isGrounded && !character.data.isSprinting)
-					{
-						TryActivateStaminaZeroMechanic(character);
-					}
+					TryActivateStaminaZeroMechanic(character);
 				}
 
 				yield return new WaitForSeconds(0.1f);
@@ -632,7 +678,7 @@ namespace PeakClassMod
 			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < ClassBalance.MUSHROOM_STAMINA_COOLDOWN) return;
 			lastStaminaZeroTime[actor] = Time.time;
 
-			// La punition est active ici
+			// La punition est active ici (Immédiatement)
 			character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MUSHROOM_CURSE_AMOUNT, false);
 
 			string randomName = ZeroStaminaFungi[UnityEngine.Random.Range(0, ZeroStaminaFungi.Length)];
@@ -640,7 +686,30 @@ namespace PeakClassMod
 			if (fungusItem == null) return;
 			ushort id = (ushort)fungusItem.itemID;
 
-			if (character.player != null && character.player.HasEmptySlot(id)) character.player.AddItem(id, null, out _);
+			// Retarder SEULEMENT le don de l'objet via coroutine
+			if (character != null) {
+				character.StartCoroutine(MushroomancerGiveItemDelayed(character, id));
+			}
+		}
+
+		private static IEnumerator MushroomancerGiveItemDelayed(Character character, ushort itemId)
+		{
+			// Wait maximum of 5 seconds to avoid memory leaks
+			float timeout = 5f;
+			while (character != null && character.data != null && (!character.data.isGrounded || character.data.isSprinting) && timeout > 0)
+			{
+				timeout -= 0.1f;
+				yield return new WaitForSeconds(0.1f);
+			}
+
+			if (character != null && character.player != null)
+			{
+				if (character.player.HasEmptySlot(itemId))
+				{
+					character.player.AddItem(itemId, null, out _);
+				}
+				// Si l'inventaire est plein, on n'ajoute rien pour éviter de casser le slot.
+			}
 		}
 
 		public static IEnumerator GreatEpeePermanentEffects(Character character)
@@ -734,7 +803,7 @@ namespace PeakClassMod
 			HatUtils.SetLastLocalHatName(hatName);
 			switch (hatName)
 			{
-				case "Hat_Scout": ClassManager.ActivateScoutClass(); break;
+				case "Hat_Scoutmaster": ClassManager.ActivateScoutClass(); break;
 				case "Hat_Medic": case "MedicHelmet": ClassManager.ActivateMedicClass(); break;
 				case "Hat_Crab": ClassManager.ActivateTechPriestClass(); break;
 				case "Hat_Mushroom": ClassManager.ActivateMushroomancerClass(); break;
