@@ -589,6 +589,7 @@ namespace PeakClassMod
 	public static class ClassManager
 	{
 		private static readonly Dictionary<int, float> lastStaminaZeroTime = new Dictionary<int, float>();
+		private static readonly Dictionary<int, int> staminaZeroCount = new Dictionary<int, int>();
 		private static Coroutine _mushroomCoroutine;
 		private static Coroutine _greatEpeeEffectsCoroutine;
 		private static Coroutine _greatEpeeStaminaCoroutine;
@@ -678,8 +679,16 @@ namespace PeakClassMod
 			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < ClassBalance.MUSHROOM_STAMINA_COOLDOWN) return;
 			lastStaminaZeroTime[actor] = Time.time;
 
-			// La punition est active ici (Immédiatement)
-			character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MUSHROOM_CURSE_AMOUNT, false);
+			// On incrémente le compteur
+			if (!staminaZeroCount.ContainsKey(actor)) staminaZeroCount[actor] = 0;
+			staminaZeroCount[actor]++;
+
+			// "gives 2% curse every second time!"
+			// Donc une fois sur deux (les nombres pairs : 2, 4, 6...)
+			if (staminaZeroCount[actor] % 2 == 0)
+			{
+				character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MUSHROOM_CURSE_AMOUNT, false);
+			}
 
 			string randomName = ZeroStaminaFungi[UnityEngine.Random.Range(0, ZeroStaminaFungi.Length)];
 			Item fungusItem = ItemCache.Get(randomName);
@@ -702,13 +711,27 @@ namespace PeakClassMod
 				yield return new WaitForSeconds(0.1f);
 			}
 
-			if (character != null && character.player != null)
+			if (character != null && character.player != null && character.player.itemSlots != null)
 			{
-				if (character.player.HasEmptySlot(itemId))
+				// On vérifie MANUELLEMENT les 3 slots de base (0, 1, 2)
+				bool hasSpaceInBaseSlots = false;
+				int maxSlotsToCheck = Mathf.Min(3, character.player.itemSlots.Length);
+
+				for (int i = 0; i < maxSlotsToCheck; i++)
+				{
+					if (character.player.itemSlots[i] != null && character.player.itemSlots[i].IsEmpty())
+					{
+						hasSpaceInBaseSlots = true;
+						break;
+					}
+				}
+
+				// On ne donne l'objet QUE si on a de la place dans les slots principaux
+				if (hasSpaceInBaseSlots && character.player.HasEmptySlot(itemId))
 				{
 					character.player.AddItem(itemId, null, out _);
 				}
-				// Si l'inventaire est plein, on n'ajoute rien pour éviter de casser le slot.
+				// Sinon, l'inventaire principal est plein. L'objet ne sera PAS forcé dans le slot 4 (les mains).
 			}
 		}
 
@@ -945,9 +968,14 @@ namespace PeakClassMod
 			var ch = __instance?.GetComponent<Character>();
 			if (ch != null && ch.IsLocal && PeakClassModPlugin.rogueActive)
 			{
-				if (ch.data.jumpsRemaining > 0 && ch.data.currentStamina > 0.005f)
+				// Remove the jumpsRemaining limit for Rogue. They just need stamina.
+				if (ch.data.currentStamina > 0.005f)
 				{
-					ch.data.jumpsRemaining--; ch.data.chargingJump = true; ch.refs?.view?.RPC("JumpRpc", RpcTarget.All, new object[] { false }); return false;
+					// Maintain jumpsRemaining at 1 so the game allows the jump
+					ch.data.jumpsRemaining = 1;
+					ch.data.chargingJump = true;
+					ch.refs?.view?.RPC("JumpRpc", RpcTarget.All, new object[] { false });
+					return false;
 				}
 			}
 			return true;
