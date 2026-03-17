@@ -414,11 +414,13 @@ namespace PeakClassMod
 		private bool _hasRequestedItems = false;
 		private static Dictionary<int, float> _hostGiveCooldown = new Dictionary<int, float>();
 		private static Dictionary<int, Character> _characterCache = new Dictionary<int, Character>();
+		public static HashSet<int> HasReceivedStartItems = new HashSet<int>();
 
 		private void Awake() { var c = GetComponents<ClassModNetwork>(); if (c.Length > 1) { Destroy(this); return; } _character = GetComponent<Character>(); }
 		private void Start() { if (photonView != null && photonView.IsMine && !_hasRequestedItems) { _hasRequestedItems = true; StartCoroutine(RequestItemsRoutine()); } }
 		private void OnDestroy() { if (_character?.photonView?.Owner != null) _characterCache.Remove(_character.photonView.Owner.ActorNumber); }
-		public static void ClearPlayerCache(int actorNumber) { _characterCache.Remove(actorNumber); _hostGiveCooldown.Remove(actorNumber); }
+		public static void ClearPlayerCache(int actorNumber) { _characterCache.Remove(actorNumber); _hostGiveCooldown.Remove(actorNumber); HasReceivedStartItems.Remove(actorNumber); }
+		public static void ResetAllCaches() { _characterCache.Clear(); _hostGiveCooldown.Clear(); HasReceivedStartItems.Clear(); }
 
 		private IEnumerator RequestItemsRoutine()
 		{
@@ -428,7 +430,7 @@ namespace PeakClassMod
 			float timeout = 5f; bool inventoryReady = false;
 			while (timeout > 0)
 			{
-				if (_character?.player?.itemSlots != null && _character.player.itemSlots.Length > 0 && !_character.player.itemSlots[0].IsEmpty()) { inventoryReady = true; break; }
+				if (_character?.player?.itemSlots != null && _character.player.itemSlots.Length > 0) { inventoryReady = true; break; }
 				timeout -= 0.1f; yield return new WaitForSeconds(0.1f);
 			}
 			string myHatName = "None"; if (HatUtils.TryGetHatName(_character, out string d)) myHatName = d;
@@ -440,6 +442,7 @@ namespace PeakClassMod
 		{
 			if (!PhotonNetwork.IsMasterClient) return;
 			int actorID = info.Sender.ActorNumber;
+			if (HasReceivedStartItems.Contains(actorID)) return; // Prevent multiple distributions
 			if (_hostGiveCooldown.TryGetValue(actorID, out float lastTime)) if (Time.time - lastTime < ClassBalance.ITEM_GIVE_COOLDOWN) return;
 			_hostGiveCooldown[actorID] = Time.time;
 			StartCoroutine(HostGiveItemsRoutine(clientHatName, info.Sender));
@@ -454,6 +457,7 @@ namespace PeakClassMod
 			if (_characterCache.TryGetValue(actorNumber, out Character cachedChar) && cachedChar != null) targetChar = cachedChar;
 			else foreach (var ch in Character.AllCharacters) if (ch?.photonView?.Owner == requestor) { targetChar = ch; _characterCache[actorNumber] = ch; break; }
 			if (targetChar?.player == null) yield break;
+			HasReceivedStartItems.Add(actorNumber);
 			foreach (var itemName in itemsToGive)
 			{
 				var item = ItemCache.Get(itemName);
@@ -631,7 +635,31 @@ namespace PeakClassMod
 			Item fungusItem = ItemCache.Get(randomName);
 			if (fungusItem == null) return;
 			ushort id = (ushort)fungusItem.itemID;
-			if (character.player != null && character.player.HasEmptySlot(id)) character.player.AddItem(id, null, out _);
+
+			if (character != null) {
+				character.StartCoroutine(MushroomancerGiveItemDelayed(character, id));
+			}
+		}
+
+		private static IEnumerator MushroomancerGiveItemDelayed(Character character, ushort itemId)
+		{
+			// Wait until character is grounded and not sprinting to avoid giving an item during climbing/sprinting transitions
+			// Wait maximum of 5 seconds to avoid memory leaks
+			float timeout = 5f;
+			while (character != null && character.data != null && (!character.data.isGrounded || character.data.isSprinting) && timeout > 0)
+			{
+				timeout -= 0.1f;
+				yield return new WaitForSeconds(0.1f);
+			}
+
+			if (character != null && character.player != null)
+			{
+				if (character.player.HasEmptySlot(itemId))
+				{
+					character.player.AddItem(itemId, null, out _);
+				}
+				// If inventory is full, we don't force AddItem anymore to avoid bugging the slot
+			}
 		}
 
 		public static IEnumerator GreatEpeePermanentEffects(Character character)
@@ -743,7 +771,10 @@ namespace PeakClassMod
 	[HarmonyPatch(typeof(RunManager), "StartRun")]
 	public class RunManager_StartRun_Patch
 	{
-		static void Postfix() { PeakClassModPlugin.Instance?.StartCoroutine(AddEffectsDelayed()); }
+		static void Postfix() {
+			if (PhotonNetwork.IsMasterClient) { ClassModNetwork.HasReceivedStartItems.Clear(); }
+			PeakClassModPlugin.Instance?.StartCoroutine(AddEffectsDelayed());
+		}
 		public static IEnumerator AddEffectsDelayed()
 		{
 			yield return new WaitForSeconds(1.5f); var lc = Character.localCharacter; if (lc == null) { yield return new WaitForSeconds(1f); lc = Character.localCharacter; if (lc == null) yield break; }
