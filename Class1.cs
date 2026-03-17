@@ -430,7 +430,7 @@ namespace PeakClassMod
 			float timeout = 5f; bool inventoryReady = false;
 			while (timeout > 0)
 			{
-				if (_character?.player?.itemSlots != null && _character.player.itemSlots.Length > 0) { inventoryReady = true; break; }
+				if (_character?.player?.itemSlots != null && _character.player.itemSlots.Length > 0 && !_character.player.itemSlots[0].IsEmpty()) { inventoryReady = true; break; }
 				timeout -= 0.1f; yield return new WaitForSeconds(0.1f);
 			}
 			string myHatName = "None"; if (HatUtils.TryGetHatName(_character, out string d)) myHatName = d;
@@ -614,7 +614,11 @@ namespace PeakClassMod
 				// On applique la punition SEULEMENT si le joueur est conscient (debout)
 				if (!isKnockedOut && character.data.currentStamina <= 0.02f)
 				{
-					TryActivateStaminaZeroMechanic(character);
+					// Se déclenche seulement si le joueur est au sol et ne court pas
+					if (character.data.isGrounded && !character.data.isSprinting)
+					{
+						TryActivateStaminaZeroMechanic(character);
+					}
 				}
 
 				yield return new WaitForSeconds(0.1f);
@@ -636,30 +640,7 @@ namespace PeakClassMod
 			if (fungusItem == null) return;
 			ushort id = (ushort)fungusItem.itemID;
 
-			if (character != null) {
-				character.StartCoroutine(MushroomancerGiveItemDelayed(character, id));
-			}
-		}
-
-		private static IEnumerator MushroomancerGiveItemDelayed(Character character, ushort itemId)
-		{
-			// Wait until character is grounded and not sprinting to avoid giving an item during climbing/sprinting transitions
-			// Wait maximum of 5 seconds to avoid memory leaks
-			float timeout = 5f;
-			while (character != null && character.data != null && (!character.data.isGrounded || character.data.isSprinting) && timeout > 0)
-			{
-				timeout -= 0.1f;
-				yield return new WaitForSeconds(0.1f);
-			}
-
-			if (character != null && character.player != null)
-			{
-				if (character.player.HasEmptySlot(itemId))
-				{
-					character.player.AddItem(itemId, null, out _);
-				}
-				// If inventory is full, we don't force AddItem anymore to avoid bugging the slot
-			}
+			if (character.player != null && character.player.HasEmptySlot(id)) character.player.AddItem(id, null, out _);
 		}
 
 		public static IEnumerator GreatEpeePermanentEffects(Character character)
