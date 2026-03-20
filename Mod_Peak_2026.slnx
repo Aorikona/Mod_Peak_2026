@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="Mod_Peak_2026.csproj" Id="6f7cd0cf-eafa-4617-93d2-7739adc5a0a0" />
+  <Project Path="Mod_Peak_2026_Tests/Mod_Peak_2026_Tests.csproj" Id="A1B2C3D4-E5F6-47A8-9B0C-1D2E3F4A5B6C" />
 </Solution>
