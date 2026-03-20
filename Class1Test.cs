@@ -449,7 +449,6 @@ namespace PeakClassMod
 	internal static class ItemCache
 	{
 		private static Dictionary<string, Item> _byName;
-		private static float _lastRefreshTime = 0f;
 		private static bool _isRefreshing = false;
 		private static readonly object _lock = new object();
 
@@ -458,19 +457,18 @@ namespace PeakClassMod
 			lock (_lock)
 			{
 				_byName = null;
-				_lastRefreshTime = 0f;
 			}
 		}
 
 		private static void EnsureCache()
 		{
-			if (_byName != null && Time.time - _lastRefreshTime < ClassBalance.ITEM_CACHE_DURATION)
+			if (_byName != null)
 				return;
 			if (_isRefreshing) return;
 
 			lock (_lock)
 			{
-				if (_byName != null && Time.time - _lastRefreshTime < ClassBalance.ITEM_CACHE_DURATION)
+				if (_byName != null)
 					return;
 
 				_isRefreshing = true;
@@ -483,7 +481,6 @@ namespace PeakClassMod
 							newCache[it.name] = it;
 					}
 					_byName = newCache;
-					_lastRefreshTime = Time.time;
 				}
 				finally
 				{
