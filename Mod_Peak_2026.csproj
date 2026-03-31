@@ -67,6 +67,7 @@
     <Compile Include="src\PeakClassModPlugin.cs" />
     <Compile Include="src\Utils\ClassCheckUtil.cs" />
     <Compile Include="src\Utils\GoblinDiet.cs" />
+    <Compile Include="src\Utils\HatSignUtils.cs" />
     <Compile Include="src\Utils\HatUtils.cs" />
     <Compile Include="src\Utils\ItemCache.cs" />
     <Compile Include="src\Utils\TechPriestBlocker.cs" />
@@ -76,7 +77,6 @@
     <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="assets\" />
     <Folder Include="build\" />
     <Folder Include="config\" />
     <Folder Include="docs\" />
@@ -169,7 +169,8 @@
     <Reference Include="UnityEngine.HotReloadModule">
       <HintPath>..\..\SteamLibrary\steamapps\common\PEAK\PEAK_Data\Managed\UnityEngine.HotReloadModule.dll</HintPath>
     </Reference>
-    <Reference Include="UnityEngine.ImageConversionModule">
+    <Reference Include="UnityEngine.ImageConversionModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\SteamLibrary\steamapps\common\PEAK\PEAK_Data\Managed\UnityEngine.ImageConversionModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.IMGUIModule">
@@ -331,6 +332,9 @@
     <Reference Include="Zorro.Core.Runtime">
       <HintPath>..\..\SteamLibrary\steamapps\common\PEAK\PEAK_Data\Managed\Zorro.Core.Runtime.dll</HintPath>
     </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="assets\image\HatSign.raw" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
