@@ -33,6 +33,12 @@ namespace PeakClassMod.Patches
             else if (ClassCheckUtil.IsRogueHat(lc)) ClassManager.ActivateRogueClass();
             else if (ClassCheckUtil.IsGobelin(lc)) ClassManager.ActivateGobelinClass();
             else if (ClassCheckUtil.IsScout(lc)) ClassManager.ActivateScoutClass();
+            else if (ClassCheckUtil.IsDualNature(lc)) {
+                ClassManager.ActivateDualNatureClass();
+                if (lc.gameObject.GetComponent<DualNatureHandler>() == null) {
+                    lc.gameObject.AddComponent<DualNatureHandler>();
+                }
+            }
         }
     }
 }
