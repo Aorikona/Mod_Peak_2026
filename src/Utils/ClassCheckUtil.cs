@@ -13,5 +13,6 @@ namespace PeakClassMod.Utils
         public static bool IsAstronaut(Character ch) => HatUtils.HasHat(ch, "Hat_Astronaut");
         public static bool IsGobelin(Character ch) => HatUtils.HasAnyHat(ch, "Hat_Midsummer");
         public static bool IsScout(Character ch) => HatUtils.HasHat(ch, "Hat_Scoutmaster");
+        public static bool IsDualNature(Character ch) => HatUtils.HasHat(ch, "Hat_DualNature");
     }
 }

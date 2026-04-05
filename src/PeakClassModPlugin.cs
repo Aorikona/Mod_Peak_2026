@@ -40,6 +40,7 @@ namespace PeakClassMod
         public static bool generalActive = false;
         public static bool astronautActive = false;
         public static bool gobelinActive = false;
+        public static bool dualNatureActive = false;
         public static string currentClass = "None";
 
         private GameObject _callbacksGO;
@@ -86,6 +87,7 @@ namespace PeakClassMod
                 case "Hat_NinjaHeadband": items.Add("RopeSpool"); items.Add("RopeSpool"); break;
                 case "Hat_Astronaut": items.Add("BalloonBunch"); break;
                 case "Hat_Midsummer": items.Add(ClassBalance.BLOWGUN); items.Add("MagicBean"); break;
+                case "Hat_DualNature": break; // Add start items here if needed later
             }
             return items;
         }
