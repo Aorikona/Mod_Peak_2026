@@ -223,7 +223,18 @@ namespace PeakClassMod.Handlers
                 ItemSlot slot = _character.player.itemSlots[i];
                 if (slot == null || slot.IsEmpty()) continue;
 
-                Item item = slot.ItemInSlot;
+                Item item = null;
+                try
+                {
+                    var slotTrav = Traverse.Create(slot);
+                    // Standard ways games name the item field in a slot
+                    if (slotTrav.Field("item").FieldExists()) item = slotTrav.Field("item").GetValue<Item>();
+                    else if (slotTrav.Field("Item").FieldExists()) item = slotTrav.Field("Item").GetValue<Item>();
+                    else if (slotTrav.Property("item").PropertyExists()) item = slotTrav.Property("item").GetValue<Item>();
+                    else if (slotTrav.Property("Item").PropertyExists()) item = slotTrav.Property("Item").GetValue<Item>();
+                }
+                catch { }
+
                 if (item != null && item.name.IndexOf("bag", System.StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     // The class cannot equip or carry bags. Drop it.
