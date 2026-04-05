@@ -25,46 +25,6 @@ namespace PeakClassMod.Patches
         }
     }
 
-    [HarmonyPatch(typeof(Item), "Update")]
-    public class DualNatureBagRestrictionUpdatePatch
-    {
-        static void Postfix(Item __instance)
-        {
-            if (__instance == null) return;
-            if (!BagCheckCache.IsBag(__instance)) return;
-
-            Character holder = __instance.holderCharacter;
-            bool heldByDualNature = holder != null && ClassCheckUtil.IsDualNature(holder);
-
-            // ONLY apply if held by someone
-            if (holder != null)
-            {
-                if (heldByDualNature)
-                {
-                    if (__instance.UIData != null)
-                    {
-                        // Safely restrict inventory movements without allocating memory via reflection in Update
-                        if (__instance.UIData.canPocket) __instance.UIData.canPocket = false;
-                        if (__instance.UIData.canBackpack) __instance.UIData.canBackpack = false;
-
-                        // We do not drop it forcefully here to avoid reflection performance issues.
-                        // The player cannot pocket it, and cannot use it due to the Primary/Secondary patch.
-                        // They will be forced to drop it using the default G key.
-                    }
-                }
-                else
-                {
-                    // Restore state only if held by someone else, avoiding global state leak on unheld items
-                    if (__instance.UIData != null)
-                    {
-                        if (!__instance.UIData.canPocket) __instance.UIData.canPocket = true;
-                        if (!__instance.UIData.canBackpack) __instance.UIData.canBackpack = true;
-                    }
-                }
-            }
-        }
-    }
-
     [HarmonyPatch(typeof(Item), "StartUsePrimary")]
     [HarmonyPriority(Priority.High)]
     public class DualNatureBagRestrictionPrimaryPatch

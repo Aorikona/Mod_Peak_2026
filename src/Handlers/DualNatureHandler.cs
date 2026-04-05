@@ -10,6 +10,9 @@ namespace PeakClassMod.Handlers
 {
     public class DualNatureHandler : MonoBehaviour
     {
+        // Event for external scripts to play sounds (e.g. Wolf Howl for night)
+        public static event System.Action<bool, Character> OnDualNatureStateChanged;
+
         private Character _character;
         private CharacterMovement _movement;
         private Traverse _travMove;
@@ -30,6 +33,7 @@ namespace PeakClassMod.Handlers
         private bool _lastStateGrounded = false;
 
         private float _lastAuraTime = 0f;
+        private float _lastBagCheckTime = 0f;
         private Collider[] _auraColliders = new Collider[20];
 
         private void Start()
@@ -147,6 +151,11 @@ namespace PeakClassMod.Handlers
                         }
                     }
 
+                    if (_lastStateWasDay != isDay)
+                    {
+                        OnDualNatureStateChanged?.Invoke(isDay, _character);
+                    }
+
                     _lastStateWasDay = isDay;
                     _lastStateGrounded = isGrounded;
                     _isModified = true;
@@ -180,11 +189,53 @@ namespace PeakClassMod.Handlers
                     _lastAuraTime = Time.time;
                     ProcessAura(isDay);
                 }
+
+                // Bag carrying restriction processing (Tick based to avoid every frame)
+                if (Time.time - _lastBagCheckTime >= 0.5f)
+                {
+                    _lastBagCheckTime = Time.time;
+                    CheckAndDropBags();
+                }
             }
         }
 
+        private void CheckAndDropBags()
+        {
+            if (_character.player == null || _character.player.itemSlots == null) return;
+
+            // Loop through inventory slots
+            for (int i = 0; i < _character.player.itemSlots.Length; i++)
+            {
+                ItemSlot slot = _character.player.itemSlots[i];
+                if (slot == null || slot.IsEmpty()) continue;
+
+                Item item = slot.ItemInSlot;
+                if (item != null && item.name.IndexOf("bag", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    // The class cannot equip or carry bags. Drop it.
+                    try
+                    {
+                        var playerTraverse = Traverse.Create(_character.player);
+                        // Using multiple common method names from the underlying engine
+                        if (playerTraverse.Method("DropItem", new object[] { item }).MethodExists())
+                        {
+                            playerTraverse.Method("DropItem", new object[] { item }).GetValue();
+                        }
+                        else if (playerTraverse.Method("TryDropItem", new object[] { item }).MethodExists())
+                        {
+                            playerTraverse.Method("TryDropItem", new object[] { item }).GetValue();
+                        }
+                    }
+                    catch { }
+                }
+            }
+        }
+
+        private HashSet<Character> _processedAuraTargets = new HashSet<Character>();
+
         private void ProcessAura(bool isDay)
         {
+            _processedAuraTargets.Clear();
             int count = Physics.OverlapSphereNonAlloc(_character.transform.position, ClassBalance.DUALNATURE_RADIUS, _auraColliders);
             for (int i = 0; i < count; i++)
             {
@@ -194,6 +245,10 @@ namespace PeakClassMod.Handlers
                 // Find Character
                 Character target = col.GetComponentInParent<Character>();
                 if (target == null || target == _character || target.refs?.afflictions == null) continue;
+
+                // Deduplicate characters to prevent multiple colliders causing excessive damage/healing
+                if (_processedAuraTargets.Contains(target)) continue;
+                _processedAuraTargets.Add(target);
 
                 if (isDay)
                 {
