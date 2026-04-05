@@ -291,6 +291,14 @@ namespace PeakClassMod.Handlers
                     // Periodic damage to allies
                     target.refs.afflictions.AddStatus(CharacterAfflictions.STATUSTYPE.Injury, ClassBalance.DUALNATURE_DAMAGE_TICK, false);
                 }
+
+                // Add visual indicator to ally
+                DualNatureAuraVisual visual = target.gameObject.GetComponent<DualNatureAuraVisual>();
+                if (visual == null)
+                {
+                    visual = target.gameObject.AddComponent<DualNatureAuraVisual>();
+                }
+                visual.Ping(isDay);
             }
         }
     }
