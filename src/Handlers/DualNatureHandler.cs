@@ -13,6 +13,10 @@ namespace PeakClassMod.Handlers
         // Event for external scripts to play sounds (e.g. Wolf Howl for night)
         public static event System.Action<bool, Character> OnDualNatureStateChanged;
 
+        public AudioClip dayTransitionSound;
+        public AudioClip nightTransitionSound;
+        private AudioSource _audioSource;
+
         private Character _character;
         private CharacterMovement _movement;
         private Traverse _travMove;
@@ -40,6 +44,10 @@ namespace PeakClassMod.Handlers
         {
             _character = GetComponent<Character>();
             _movement = GetComponent<CharacterMovement>();
+
+            _audioSource = gameObject.GetComponent<AudioSource>();
+            if (_audioSource == null) _audioSource = gameObject.AddComponent<AudioSource>();
+
             if (_movement != null)
             {
                 _travMove = Traverse.Create(_movement);
@@ -154,6 +162,12 @@ namespace PeakClassMod.Handlers
                     if (_lastStateWasDay != isDay)
                     {
                         OnDualNatureStateChanged?.Invoke(isDay, _character);
+
+                        if (_audioSource != null)
+                        {
+                            if (isDay && dayTransitionSound != null) _audioSource.PlayOneShot(dayTransitionSound);
+                            else if (!isDay && nightTransitionSound != null) _audioSource.PlayOneShot(nightTransitionSound);
+                        }
                     }
 
                     _lastStateWasDay = isDay;
