@@ -61,7 +61,7 @@ namespace PeakClassMod
         public const float DUALNATURE_DAMAGE_TICK = 0.05f;
         public const float DUALNATURE_NIGHT_SPEED_MULT = 1.5f;
         public const float DUALNATURE_DAY_JUMP_MULT = 1.5f;
-        public const float DUALNATURE_HUNGER_MULT = 1.5f;
+        public const float DUALNATURE_HUNGER_MULT = 1.2f;
         public const float DUALNATURE_AURA_TICK_RATE = 2f;
     }
 }

@@ -21,6 +21,14 @@ namespace PeakClassMod.Patches
                 if (ClassManager.IsAstronautActive()) amount *= ClassBalance.ASTRONAUT_HUNGER_MULT;
                 else if (ClassManager.IsScoutActive()) amount *= ClassBalance.SCOUT_HUNGER_MULT;
                 else if (ClassManager.IsGeneralActive()) amount *= ClassBalance.GENERAL_HUNGER_MULT;
+                else if (ClassManager.IsDualNatureActive())
+                {
+                    var handler = ch.gameObject.GetComponent<Handlers.DualNatureHandler>();
+                    if (handler != null && !handler.IsDayTime())
+                    {
+                        amount *= ClassBalance.DUALNATURE_HUNGER_MULT;
+                    }
+                }
             }
             // --- GOBELIN IMMUNITY (NOUVEAU) ---
             if (ClassCheckUtil.IsGobelin(ch))

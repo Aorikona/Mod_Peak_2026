@@ -38,6 +38,9 @@ namespace PeakClassMod.Patches
                 if (lc.gameObject.GetComponent<DualNatureHandler>() == null) {
                     lc.gameObject.AddComponent<DualNatureHandler>();
                 }
+                if (lc.gameObject.GetComponent<DualNatureUIIndicator>() == null) {
+                    lc.gameObject.AddComponent<DualNatureUIIndicator>();
+                }
             }
         }
     }

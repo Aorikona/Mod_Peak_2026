@@ -62,6 +62,7 @@
     <Compile Include="src\Handlers\TechPriestWeightEnforcer.cs" />
     <Compile Include="src\Handlers\DualNatureHandler.cs" />
     <Compile Include="src\Handlers\DualNatureAuraVisual.cs" />
+    <Compile Include="src\Handlers\DualNatureUIIndicator.cs" />
     <Compile Include="src\Patches\DualNatureBagRestrictionPatch.cs" />
     <Compile Include="src\Patches\TechPriestStaminaPatch1.cs" />
     <Compile Include="src\Patches\TechPriestStaminaPatch2.cs" />

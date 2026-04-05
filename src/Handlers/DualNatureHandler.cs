@@ -189,13 +189,7 @@ namespace PeakClassMod.Handlers
             {
                 bool isDay = IsDayTime();
 
-                // Nighttime survival: Increased hunger depletion
-                if (!isDay && _character.refs?.afflictions != null)
-                {
-                    // We increase hunger over time manually, or we let the multiplier handle it if we patched General_AddStatus_Patch
-                    // To do it continuously here:
-                    _character.refs.afflictions.AddStatus(CharacterAfflictions.STATUSTYPE.Hunger, Time.deltaTime * 0.05f * ClassBalance.DUALNATURE_HUNGER_MULT, false);
-                }
+                // Hunger depletion is now properly handled in General_AddStatus_Patch to scale base game rate accurately
 
                 // Aura processing (Tick based)
                 if (Time.time - _lastAuraTime >= ClassBalance.DUALNATURE_AURA_TICK_RATE)
