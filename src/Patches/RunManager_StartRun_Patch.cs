@@ -41,6 +41,9 @@ namespace PeakClassMod.Patches
                 if (lc.gameObject.GetComponent<DualNatureUIIndicator>() == null) {
                     lc.gameObject.AddComponent<DualNatureUIIndicator>();
                 }
+                if (lc.gameObject.GetComponent<DualNatureAuraVisual>() == null) {
+                    lc.gameObject.AddComponent<DualNatureAuraVisual>();
+                }
             }
         }
     }

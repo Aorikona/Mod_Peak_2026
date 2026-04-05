@@ -5,9 +5,8 @@ namespace PeakClassMod.Handlers
     public class DualNatureAuraVisual : MonoBehaviour
     {
         private LineRenderer _lineRenderer;
-        private float _timeRemaining = 0f;
-        private float _radius = 1.5f; // Small circle under the affected character
-        private int _segments = 36;
+        private float _radius = ClassBalance.DUALNATURE_RADIUS; // Large circle representing the aura radius
+        private int _segments = 64; // More segments for a smoother large circle
         private Material _material;
 
         private void Awake()
@@ -22,9 +21,9 @@ namespace PeakClassMod.Handlers
             _lineRenderer.positionCount = _segments + 1;
             _lineRenderer.useWorldSpace = false;
 
-            // Set basic visual properties
-            _lineRenderer.startWidth = 0.15f;
-            _lineRenderer.endWidth = 0.15f;
+            // Set basic visual properties for a noticeable aura radius
+            _lineRenderer.startWidth = 0.25f;
+            _lineRenderer.endWidth = 0.25f;
 
             // Attempt to find a standard Unity diffuse material or unlit to draw solid color
             _material = new Material(Shader.Find("Hidden/Internal-Colored"));
@@ -39,7 +38,14 @@ namespace PeakClassMod.Handlers
             _lineRenderer.material = _material;
 
             DrawCircle();
-            _lineRenderer.enabled = false; // Hidden by default
+
+            // Initialize with proper state
+            var handler = GetComponentInParent<DualNatureHandler>();
+            if (handler != null)
+            {
+                SetState(handler.IsDayTime());
+            }
+            DualNatureHandler.OnDualNatureStateChanged += HandleStateChange;
         }
 
         private void DrawCircle()
@@ -55,13 +61,19 @@ namespace PeakClassMod.Handlers
             }
         }
 
-        public void Ping(bool isDay)
+        private void HandleStateChange(bool isDay, Character character)
         {
-            // Reset the timer, duration is slightly longer than the tick rate to keep it continuous if staying in radius
-            _timeRemaining = ClassBalance.DUALNATURE_AURA_TICK_RATE + 0.5f;
+            // Update color if this is our character changing states
+            if (character != null && (character.gameObject == this.gameObject || character.gameObject == transform.parent?.gameObject))
+            {
+                SetState(isDay);
+            }
+        }
 
-            // Set Color based on state
-            Color targetColor = isDay ? new Color(0f, 1f, 0.2f, 0.6f) : new Color(1f, 0f, 0f, 0.6f);
+        public void SetState(bool isDay)
+        {
+            // Set Color based on state: Green for Healing (Day), Red for Damaging (Night)
+            Color targetColor = isDay ? new Color(0f, 1f, 0.2f, 0.4f) : new Color(1f, 0f, 0f, 0.4f);
             _lineRenderer.startColor = targetColor;
             _lineRenderer.endColor = targetColor;
 
@@ -70,36 +82,12 @@ namespace PeakClassMod.Handlers
                 _material.color = targetColor;
             }
 
-            _lineRenderer.enabled = true;
-        }
-
-        private void Update()
-        {
-            if (_timeRemaining > 0)
-            {
-                _timeRemaining -= Time.deltaTime;
-
-                // Fade out effect
-                if (_timeRemaining < 1f && _lineRenderer.enabled)
-                {
-                    float alpha = _timeRemaining * 0.6f;
-                    Color c = _lineRenderer.startColor;
-                    c.a = alpha;
-                    _lineRenderer.startColor = c;
-                    _lineRenderer.endColor = c;
-
-                    if (_material != null) _material.color = c;
-                }
-
-                if (_timeRemaining <= 0)
-                {
-                    _lineRenderer.enabled = false;
-                }
-            }
+            _lineRenderer.enabled = true; // Permanently visible
         }
 
         private void OnDestroy()
         {
+            DualNatureHandler.OnDualNatureStateChanged -= HandleStateChange;
             if (_material != null)
             {
                 Destroy(_material);
