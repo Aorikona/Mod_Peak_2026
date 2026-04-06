@@ -23,6 +23,7 @@ namespace PeakClassMod.Patches
                 p.EnsureComponent<MedicStatHandler>(__instance.gameObject);
                 p.EnsureComponent<TechPriestWeightEnforcer>(__instance.gameObject);
                 p.EnsureComponent<GobelinSizeHandler>(__instance.gameObject);
+                p.EnsureComponent<GobelinWeaponRestorer>(__instance.gameObject);
             }
         }
     }

@@ -34,8 +34,15 @@ namespace PeakClassMod.Patches
             }
             if (ClassCheckUtil.IsTechPriest(ch) && ClassManager.IsTechPriestActive())
             {
-                if (statusType == CharacterAfflictions.STATUSTYPE.Hunger) amount = 0f;
-                else if (statusType == CharacterAfflictions.STATUSTYPE.Weight) { amount = 0f; return false; }
+                if (statusType == CharacterAfflictions.STATUSTYPE.Hunger)
+                {
+                    amount *= 1.5f;
+                }
+                else if (statusType == CharacterAfflictions.STATUSTYPE.Weight)
+                {
+                    amount = 0f;
+                    return false;
+                }
             }
             if (statusType == CharacterAfflictions.STATUSTYPE.Poison && ClassCheckUtil.IsMushroom(ch)) amount = 0f;
             return true;
