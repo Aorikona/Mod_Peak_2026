@@ -36,9 +36,9 @@ namespace PeakClassMod.Handlers
             bool hasBlowgun = false;
             foreach (var slot in _character.player.itemSlots)
             {
-                if (slot != null && !slot.IsEmpty() && slot.ItemInSlot != null)
+                if (slot != null && !slot.IsEmpty() && slot.prefab != null)
                 {
-                    if (slot.ItemInSlot.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (slot.prefab.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         hasBlowgun = true;
                         break;
