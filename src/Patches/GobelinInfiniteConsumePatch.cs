@@ -20,7 +20,7 @@ namespace PeakClassMod.Patches
             if (ClassCheckUtil.IsGobelin(__instance.holderCharacter))
             {
                 // 2. Est-ce la Sarbacane ?
-                if (__instance.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                if (PerformanceCache.IsBlowgun(__instance))
                 {
                     // --- MANUELLEMENT FINIR L'ACTION ---
 

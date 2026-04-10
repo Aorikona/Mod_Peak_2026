@@ -19,7 +19,7 @@ namespace PeakClassMod.Patches
             if (__instance.holderCharacter.IsLocal && ClassCheckUtil.IsGobelin(__instance.holderCharacter))
             {
                 // Vérifier si c'est la Sarbacane
-                if (__instance.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                if (PerformanceCache.IsBlowgun(__instance))
                 {
                     // Appliquer la Curse
                     __instance.holderCharacter.refs?.afflictions?.AddStatus(
