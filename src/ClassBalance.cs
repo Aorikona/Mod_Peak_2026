@@ -29,6 +29,7 @@ namespace PeakClassMod
         public const float GENERAL_CURSE_MIN = 0.35f;
         public const float GENERAL_HUNGER_MULT = 2.0f;
         public const float GENERAL_WEIGHT_MULT = 2.0f;
+        public const float GENERAL_SPEED_MULT = 0.75f;
 
         public const float MEDIC_CURSE = 0.15f;
         public const int MEDIC_MAX_HEALS = 10;
@@ -53,5 +54,12 @@ namespace PeakClassMod
         public const float ITEM_GIVE_COOLDOWN = 2f;
         public const float ITEM_CACHE_DURATION = 300f;
         public const float SIZE_CHECK_INTERVAL = 0.5f;
+
+        public const float TECH_PRIEST_HUNGER_MULT = 1.5f;
+
+        public const float WOLF_CLIMB_SPEED_MULT = 1.3f;
+        public const float WOLF_SPRINT_SPEED_MULT = 1.3f;
+        public const float WOLF_HUNGER_MULT = 1.3f;
+        public const float WOLF_EFFECT_TICK_INTERVAL = 3f;
     }
 }

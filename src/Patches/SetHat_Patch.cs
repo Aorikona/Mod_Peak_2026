@@ -30,6 +30,7 @@ namespace PeakClassMod.Patches
                 case "Hat_Bandana": case "Hat_Captain": ClassManager.ActivateGeneralClass(); break;
                 case "Hat_Astronaut": ClassManager.ActivateAstronautClass(); break;
                 case "Hat_Midsummer": ClassManager.ActivateGobelinClass(); break;
+                case "Hat_WolfEars": ClassManager.ActivateWolfClass(); break;
                 default: ClassManager.DeactivateAllClasses(); break;
             }
             if (Character.localCharacter != null && GUIManager.instance?.bar != null) GUIManager.instance.bar.ChangeBar();

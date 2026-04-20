@@ -33,6 +33,7 @@ namespace PeakClassMod.Patches
             else if (ClassCheckUtil.IsRogueHat(lc)) ClassManager.ActivateRogueClass();
             else if (ClassCheckUtil.IsGobelin(lc)) ClassManager.ActivateGobelinClass();
             else if (ClassCheckUtil.IsScout(lc)) ClassManager.ActivateScoutClass();
+            else if (ClassCheckUtil.IsWolf(lc)) ClassManager.ActivateWolfClass();
         }
     }
 }

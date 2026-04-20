@@ -29,6 +29,8 @@ namespace PeakClassMod.Utils
             canvas.renderMode = RenderMode.WorldSpace;
             hatSign.AddComponent<CanvasScaler>();
             hatSign.AddComponent<GraphicRaycaster>();
+            int width = 2048; 
+            int height = 1349;
 
             var panelObj = new GameObject("Panel");
             panelObj.transform.SetParent(hatSign.transform, false);
@@ -40,56 +42,62 @@ namespace PeakClassMod.Utils
             var img = imageObj.AddComponent<Image>();
 
             Assembly assembly = Assembly.GetExecutingAssembly();
-            string resourceName = "Mod_Peak_2026.assets.image.HatSign.raw";
-            bool imageLoaded = false;
-            int width = 4970;
-            int height = 3268;
+            string resourceName = "Mod_Peak_2026.assets.image.HatSign.png";
+
+            string folderPath = Path.Combine(Paths.PluginPath, "PeakClassModAssets");
+            Directory.CreateDirectory(folderPath);
+            string tempPath = Path.Combine(folderPath, "temp_HatSign.png");
 
             using (Stream stream = assembly.GetManifestResourceStream(resourceName))
             {
-                Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
-                tex.filterMode = FilterMode.Point;
-                tex.wrapMode = TextureWrapMode.Clamp;
-
-                byte[] buffer = new byte[stream.Length];
-                stream.Read(buffer, 0, buffer.Length);
-
-                if (buffer.Length != width * height * 4)
+                if (stream == null)
                 {
+                    Debug.LogError("Image introuvable dans le DLL !");
                     return;
                 }
 
-                tex.LoadRawTextureData(buffer);
-                tex.Apply();
-                tex.filterMode = FilterMode.Bilinear;
-
-                Sprite sprite = Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f));
-                img.sprite = sprite;
-                imageLoaded = true;
+                using (FileStream file = new FileStream(tempPath, FileMode.Create, FileAccess.Write))
+                {
+                    stream.CopyTo(file);
+                }
             }
 
-            if (!imageLoaded)
+            if (ImageLoader.Instance == null)
             {
-                img.enabled = false; 
+                new GameObject("ImageLoader").AddComponent<ImageLoader>();
             }
 
-            img.color = Color.white;
+            ImageLoader.Instance.Load(tempPath, (tex) =>
+            {
+                if (tex == null)
+                {
+                    Debug.LogError("Texture NULL");
+                    return;
+                }
 
-            hatSign.transform.position = new Vector3(-21.88f, 3.95f, 107.3971f);
-            hatSign.transform.rotation = Quaternion.Euler(0, 90, 180);
-            hatSign.transform.localScale = Vector3.one * 0.015f;
+                Sprite sprite = Sprite.Create(
+                    tex,
+                    new Rect(0, 0, tex.width, tex.height),
+                    new Vector2(0.5f, 0.5f)
+                );
 
-            
-            var rect = panelObj.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(400, 300);
-            var imageRect = imageObj.GetComponent<RectTransform>();
-            float scaleFactor = 1.1f; 
+                img.sprite = sprite;
+                img.color = Color.white;
 
-            float widthUI = 380 * scaleFactor;
-            float heightUI = widthUI * ((float)height / width);
+                hatSign.transform.position = new Vector3(-6.4f, 5.15f, 122.5f);
+                hatSign.transform.rotation = Quaternion.Euler(0, 0, 0);
+                hatSign.transform.localScale = new Vector3(0.038f, 0.035f, 0.035f);
 
+                var rect = panelObj.GetComponent<RectTransform>();
+                rect.sizeDelta = new Vector2(400, 300);
+                var imageRect = imageObj.GetComponent<RectTransform>();
+                float scaleFactor = 1.1f;
 
-            imageRect.sizeDelta = new Vector2(widthUI, heightUI);
+                float widthUI = 380 * scaleFactor;
+                float heightUI = widthUI * ((float)height / width);
+
+                imageRect.sizeDelta = new Vector2(widthUI, heightUI);
+            });
         }
     }
 }

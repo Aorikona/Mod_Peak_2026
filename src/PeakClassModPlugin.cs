@@ -40,6 +40,7 @@ namespace PeakClassMod
         public static bool generalActive = false;
         public static bool astronautActive = false;
         public static bool gobelinActive = false;
+        public static bool wolfActive = false;
         public static string currentClass = "None";
 
         private GameObject _callbacksGO;

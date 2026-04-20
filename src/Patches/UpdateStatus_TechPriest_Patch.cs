@@ -17,7 +17,6 @@ namespace PeakClassMod.Patches
         {
             if (__instance?.character != null && ClassCheckUtil.IsTechPriest(__instance.character) && ClassManager.IsTechPriestActive())
             {
-                __instance.currentStatuses[(int)CharacterAfflictions.STATUSTYPE.Hunger] = 0f;
                 __instance.currentStatuses[(int)CharacterAfflictions.STATUSTYPE.Weight] = 0f;
             }
         }

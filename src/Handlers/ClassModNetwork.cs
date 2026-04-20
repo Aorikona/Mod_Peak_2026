@@ -63,6 +63,25 @@ namespace PeakClassMod.Handlers
                 yield return new WaitForSeconds(0.02f);
             }
         }
+
+        [PunRPC]
+        public void RPC_ApplyWolfHeal(float amount)
+        {
+            if (_character == null) _character = GetComponent<Character>();
+            var afflictions = _character?.refs?.afflictions;
+            if (afflictions == null) return;
+            afflictions.SubtractStatus(CharacterAfflictions.STATUSTYPE.Injury, amount, false);
+        }
+
+        [PunRPC]
+        public void RPC_ApplyWolfDamage(float amount)
+        {
+            if (_character == null) _character = GetComponent<Character>();
+            var afflictions = _character?.refs?.afflictions;
+            if (afflictions == null) return;
+            afflictions.AddStatus(CharacterAfflictions.STATUSTYPE.Injury, amount, false, true, true);
+        }
+
         [PunRPC] public void ShowMedicHealEffectRPC(int remainingHeals) { PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Medic heal: {remainingHeals}"); }
         [PunRPC] public void RPC_SyncClassActivation(string className, int actorNumber) { PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Player {actorNumber} class: {className}"); }
     }

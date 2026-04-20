@@ -1,12 +1,12 @@
-﻿using PeakClassMod;
+﻿using HarmonyLib;
 using PeakClassMod.Handlers;
+using PeakClassMod;
 using System;
-using UnityEngine;
-using HarmonyLib;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnityEngine;
 
 namespace PeakClassMod.Patches
 {
@@ -23,6 +23,7 @@ namespace PeakClassMod.Patches
                 p.EnsureComponent<MedicStatHandler>(__instance.gameObject);
                 p.EnsureComponent<TechPriestWeightEnforcer>(__instance.gameObject);
                 p.EnsureComponent<GobelinSizeHandler>(__instance.gameObject);
+                p.EnsureComponent<WolfHandler>(__instance.gameObject);
             }
         }
     }
