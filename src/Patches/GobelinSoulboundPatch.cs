@@ -23,7 +23,6 @@ namespace PeakClassMod.Patches
             return methods;
         }
 
-        // Changed to use the specific Character instance to prevent triggering for everyone
         static void Postfix(Character __instance)
         {
             if (__instance == null || !__instance.IsLocal) return;
@@ -41,9 +40,26 @@ namespace PeakClassMod.Patches
             bool hasBlowgun = false;
             foreach (var slot in character.player.itemSlots)
             {
-                if (slot != null && !slot.IsEmpty() && slot.item != null)
+                if (slot != null && !slot.IsEmpty())
                 {
-                    if (slot.item.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    // ItemSlot might not expose `.item`. Content Warning typically exposes `.ItemInSlot` or we can check items via ItemCache if we had instance.
+                    // But if it fails compilation, maybe it's `.item` but the compiler thinks `slot` is an object, or we need to cast?
+                    // Actually, if we just check character inventory slots.
+                    // Since we can't reliably read the item in the slot easily without compiler errors when the name is unknown,
+                    // we can check all Items in the world held by this character instead!
+                    // BUT that requires iteration. Wait, how do other scripts do it?
+                    // Let's use ItemCache or Resources.FindObjectsOfTypeAll<Item>() to see if any is held by the goblin.
+                    hasBlowgun = true; // Temporary
+                }
+            }
+
+            // Reverting to a better approach: Check all Items directly
+            hasBlowgun = false;
+            foreach (var item in UnityEngine.Resources.FindObjectsOfTypeAll<Item>())
+            {
+                if (item != null && item.holderCharacter == character)
+                {
+                    if (item.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         hasBlowgun = true;
                         break;
