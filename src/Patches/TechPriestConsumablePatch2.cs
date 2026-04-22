@@ -1,17 +1,15 @@
-﻿using PeakClassMod.Utils;
-using System;
-using UnityEngine;
+using PeakClassMod.Utils;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(Item), "StartUseSecondary")][HarmonyPriority(Priority.Normal)] 
-    public class TechPriestConsumablePatch2 { 
-        static bool Prefix(Item __instance) => !TechPriestItemChecker.ShouldBlockUse(__instance); 
+    [HarmonyPatch(typeof(Item), "StartUseSecondary")]
+    [HarmonyPriority(Priority.Normal)]
+    public class TechPriestConsumablePatch2
+    {
+        static bool Prefix(Item __instance)
+        {
+            return true; // Let the game handle consumption, effects are blocked elsewhere.
+        }
     }
-
 }

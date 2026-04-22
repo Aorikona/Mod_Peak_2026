@@ -17,8 +17,14 @@ namespace PeakClassMod.Patches
             var wake = AccessTools.Method(typeof(Character), "CallWakeUp");
             if (wake != null) methods.Add(wake);
 
+            var wakeUp = AccessTools.Method(typeof(Character), "WakeUp");
+            if (wakeUp != null) methods.Add(wakeUp);
+
             var revive = AccessTools.Method(typeof(Character), "CallRevive");
             if (revive != null) methods.Add(revive);
+
+            var setDead = AccessTools.Method(typeof(Character), "SetDead");
+            if (setDead != null) methods.Add(setDead);
 
             return methods;
         }
@@ -26,6 +32,10 @@ namespace PeakClassMod.Patches
         static void Postfix(Character __instance)
         {
             if (__instance == null || !__instance.IsLocal) return;
+
+            // If SetDead(true) was called, we probably shouldn't revive weapon.
+            // The task specifically mentioned SetDead(false) which means they are revived.
+            if (__instance.data != null && __instance.data.dead) return;
 
             if (ClassCheckUtil.IsGobelin(__instance))
             {
@@ -37,8 +47,6 @@ namespace PeakClassMod.Patches
         {
             if (character == null || character.player == null || character.player.itemSlots == null) return;
 
-            // Use FindObjectsOfTypeAll to check for the Blowgun assigned to this character
-            // since ItemSlot doesn't expose the item directly in a way the compiler recognizes without the dll
             bool hasBlowgun = false;
             foreach (var item in UnityEngine.Resources.FindObjectsOfTypeAll<Item>())
             {

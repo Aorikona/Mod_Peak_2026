@@ -22,9 +22,9 @@ namespace PeakClassMod.Patches
 
         static bool Prefix()
         {
-            if (ClassManager.IsMushroomancerActive())
+            if (ClassManager.IsMushroomancerActive() || ClassManager.IsGobelinActive())
             {
-                // Bypass screen VFX if local player is Mushroomancer
+                // Bypass screen VFX if local player is Mushroomancer or Gobelin
                 return false;
             }
             return true;
