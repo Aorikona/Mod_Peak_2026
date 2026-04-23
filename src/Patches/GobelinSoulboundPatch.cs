@@ -2,6 +2,7 @@ using HarmonyLib;
 using PeakClassMod.Utils;
 using System.Reflection;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace PeakClassMod.Patches
 {
@@ -13,6 +14,9 @@ namespace PeakClassMod.Patches
             var methods = new List<MethodBase>();
             var push = AccessTools.Method(typeof(CharacterSpawner), "PushReconnectData");
             if (push != null) methods.Add(push);
+
+            var postRevive = AccessTools.Method(typeof(Character), "ApplyPostReviveStatus");
+            if (postRevive != null) methods.Add(postRevive);
 
             var wake = AccessTools.Method(typeof(Character), "CallWakeUp");
             if (wake != null) methods.Add(wake);
@@ -31,15 +35,15 @@ namespace PeakClassMod.Patches
 
         static void Postfix(Character __instance)
         {
-            if (__instance == null || !__instance.IsLocal) return;
+            // If the hooked method is PushReconnectData, it might not have __instance.
+            Character target = __instance ?? Character.localCharacter;
+            if (target == null || !target.IsLocal) return;
 
-            // If SetDead(true) was called, we probably shouldn't revive weapon.
-            // The task specifically mentioned SetDead(false) which means they are revived.
-            if (__instance.data != null && __instance.data.dead) return;
+            if (target.data != null && target.data.dead) return;
 
-            if (ClassCheckUtil.IsGobelin(__instance))
+            if (ClassCheckUtil.IsGobelin(target))
             {
-                EnsureBlowpipe(__instance);
+                EnsureBlowpipe(target);
             }
         }
 
@@ -47,20 +51,21 @@ namespace PeakClassMod.Patches
         {
             if (character == null || character.player == null || character.player.itemSlots == null) return;
 
-            bool hasBlowgun = false;
-            foreach (var item in UnityEngine.Resources.FindObjectsOfTypeAll<Item>())
+            bool hasBlowpipe = false;
+
+            foreach (var item in Resources.FindObjectsOfTypeAll<Item>())
             {
                 if (item != null && item.holderCharacter == character)
                 {
                     if (item.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        hasBlowgun = true;
+                        hasBlowpipe = true;
                         break;
                     }
                 }
             }
 
-            if (!hasBlowgun)
+            if (!hasBlowpipe)
             {
                 var fungusItem = ItemCache.Get(ClassBalance.BLOWGUN);
                 if (fungusItem != null)
@@ -69,7 +74,7 @@ namespace PeakClassMod.Patches
                     if (character.player.HasEmptySlot(id))
                     {
                         character.player.AddItem(id, null, out _);
-                        PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Restored Blowgun on Revive/WakeUp");
+                        PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Restored Blowpipe on Revive/WakeUp");
                     }
                 }
             }
