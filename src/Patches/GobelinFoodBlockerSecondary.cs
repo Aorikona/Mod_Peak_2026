@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 namespace PeakClassMod.Patches
 {
     [HarmonyPatch(typeof(Item), "StartUseSecondary")]
-    [HarmonyPriority(Priority.High)]
+    [HarmonyPriority(HarmonyLib.Priority.High)]
     public class GobelinFoodBlockerSecondary
     {
         static bool Prefix(Item __instance)

@@ -43,7 +43,6 @@ namespace PeakClassMod.Patches
                     // 5. Vérification finale : Si la cible est un Gobelin
                     if (targetChar != null && ClassCheckUtil.IsGobelin(targetChar))
                     {
-                        // PeakClassModPlugin.Log?.LogInfo($"[Anti-Feed] Bloqué : On ne nourrit pas le Gobelin !");
                         return false; // BLOQUE L'ACTION
                     }
                 }
