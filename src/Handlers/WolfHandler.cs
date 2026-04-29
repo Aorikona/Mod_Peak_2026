@@ -95,6 +95,28 @@ namespace PeakClassMod.Handlers
             float widthMultiplier = CIRCLE_BASE_WIDTH * pulse;
             _circleRenderer.widthMultiplier = widthMultiplier;
             var daySegmentUtils = new DaySegmentUtils();
+
+            if (_character.IsGhost)
+            {
+                if (daySegmentUtils.IsDay())
+                {
+                    _timeTextComponent.text = "Day";
+                }
+                else
+                {
+                    _timeTextComponent.text = "Night";
+                }
+
+                if (_circleRenderer != null)
+                    _circleRenderer.enabled = false;
+
+                return;
+            }
+            else
+            {
+                if (_circleRenderer != null)
+                    _circleRenderer.enabled = true;
+            }
             if (Time.time >= _nextEffectTime)
             {
                 _nextEffectTime = Time.time + 1f;
