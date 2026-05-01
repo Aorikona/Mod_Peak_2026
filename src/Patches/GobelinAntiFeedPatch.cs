@@ -16,6 +16,10 @@ namespace PeakClassMod.Patches
     [HarmonyPatch(typeof(Item), "StartUseSecondary")]
     public class GobelinAntiFeedPatch
     {
+        private static System.Reflection.FieldInfo _bestCharacterField;
+        private static System.Reflection.FieldInfo _characterField;
+        private static Type _characterInteractibleType;
+
         static bool Prefix(Item __instance)
         {
             if (__instance == null) return true;
@@ -28,22 +32,31 @@ namespace PeakClassMod.Patches
                 var interact = Interaction.instance;
                 if (interact == null) return true;
 
-                // 3. REFLECTION : On force l'accès à la variable interne 'bestCharacter'
-                // On utilise Traverse pour lire le champ "bestCharacter" dans l'instance Interaction
-                var bestCharInteractible = Traverse.Create(interact).Field("bestCharacter").GetValue<MonoBehaviour>();
+                // 3. REFLECTION CACHED : On force l'accès à la variable interne 'bestCharacter'
+                if (_bestCharacterField == null)
+                    _bestCharacterField = AccessTools.Field(typeof(Interaction), "bestCharacter");
+
+                if (_bestCharacterField == null) return true;
+
+                var bestCharInteractible = _bestCharacterField.GetValue(interact) as MonoBehaviour;
 
                 // Si on vise quelqu'un (bestCharacter n'est pas null)
                 if (bestCharInteractible != null)
                 {
                     // 4. On récupère le "Character" à l'intérieur de CharacterInteractible
-                    // (On suppose que CharacterInteractible a un champ public 'character')
-                    // Comme on n'a pas le type CharacterInteractible, on utilise aussi Traverse par sécurité
-                    var targetChar = Traverse.Create(bestCharInteractible).Field("character").GetValue<Character>();
+                    if (_characterInteractibleType == null)
+                        _characterInteractibleType = bestCharInteractible.GetType();
+
+                    if (_characterField == null)
+                        _characterField = AccessTools.Field(_characterInteractibleType, "character");
+
+                    if (_characterField == null) return true;
+
+                    var targetChar = _characterField.GetValue(bestCharInteractible) as Character;
 
                     // 5. Vérification finale : Si la cible est un Gobelin
                     if (targetChar != null && ClassCheckUtil.IsGobelin(targetChar))
                     {
-                        // PeakClassModPlugin.Log?.LogInfo($"[Anti-Feed] Bloqué : On ne nourrit pas le Gobelin !");
                         return false; // BLOQUE L'ACTION
                     }
                 }

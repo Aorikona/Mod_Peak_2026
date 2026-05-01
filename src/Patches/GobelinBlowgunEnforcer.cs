@@ -44,7 +44,7 @@ namespace PeakClassMod.Patches
                                 if (usesData != null && usesData.Value != -1) usesData.Value = -1;
                             }
                         }
-                        catch { }
+                        catch (System.Exception ex) { PeakClassModPlugin.Log?.LogError(ex); }
                     }
 
                     // B. Logique Soulbound (Restrictions d'inventaire)
@@ -97,7 +97,7 @@ namespace PeakClassMod.Patches
                             }
                         }
                     }
-                    catch { }
+                    catch (System.Exception ex) { PeakClassModPlugin.Log?.LogError(ex); }
                 }
             }
         }
