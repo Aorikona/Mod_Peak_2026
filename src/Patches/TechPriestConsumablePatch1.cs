@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(Item), "StartUsePrimary")][HarmonyPriority(Priority.Normal)] 
+    [HarmonyPatch(typeof(Item), "StartUsePrimary")][HarmonyPriority(HarmonyLib.Priority.Normal)]
     public class TechPriestConsumablePatch1 { 
         static bool Prefix(Item __instance) => !TechPriestItemChecker.ShouldBlockUse(__instance); 
     }

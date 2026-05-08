@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 namespace PeakClassMod.Patches
 {
     [HarmonyPatch(typeof(Item), "StartUsePrimary")]
-    [HarmonyPriority(Priority.High)]
+    [HarmonyPriority(HarmonyLib.Priority.High)]
     public class GobelinFoodBlockerPrimary
     {
         static bool Prefix(Item __instance)
@@ -24,7 +24,6 @@ namespace PeakClassMod.Patches
                 if (__instance.GetComponent<Action_RestoreHunger>() != null &&
                     GobelinDiet.IsPackagedFood(__instance)) // Nouvelle méthode
                 {
-                    // PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Beurk ! Nourriture industrielle refusée : {__instance.name}");
                     return false; // Bloque l'action
                 }
             }
