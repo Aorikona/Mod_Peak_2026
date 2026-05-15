@@ -7,16 +7,49 @@ namespace PeakClassMod.Utils
     public static class ItemCache
     {
         private static Dictionary<string, Item> _byName;
-        private static float _lastRefreshTime = 0f;
+        private static bool _fullyInitialized = false;
+
         public static Item Get(string name)
         {
-            if (_byName == null || Time.time - _lastRefreshTime > ClassBalance.ITEM_CACHE_DURATION)
+            if (_byName == null)
             {
                 _byName = new Dictionary<string, Item>(StringComparer.OrdinalIgnoreCase);
-                foreach (var it in Resources.FindObjectsOfTypeAll<Item>()) if (it != null && !string.IsNullOrEmpty(it.name) && !_byName.ContainsKey(it.name)) _byName[it.name] = it;
-                _lastRefreshTime = Time.time;
+                var dbItems = Singleton<ItemDatabase>.Instance?.items;
+                if (dbItems != null)
+                {
+                    foreach (var item in dbItems)
+                    {
+                        if (item != null && !string.IsNullOrEmpty(item.name) && !_byName.ContainsKey(item.name))
+                        {
+                            _byName[item.name] = item;
+                        }
+                    }
+                }
             }
-            return _byName.TryGetValue(name, out var item) ? item : null;
+
+            if (_byName.TryGetValue(name, out var foundItem))
+            {
+                return foundItem;
+            }
+
+            if (!_fullyInitialized)
+            {
+                _fullyInitialized = true;
+                foreach (var it in Resources.FindObjectsOfTypeAll<Item>())
+                {
+                    if (it != null && !string.IsNullOrEmpty(it.name) && !_byName.ContainsKey(it.name))
+                    {
+                        _byName[it.name] = it;
+                    }
+                }
+
+                if (_byName.TryGetValue(name, out var fullyFoundItem))
+                {
+                    return fullyFoundItem;
+                }
+            }
+
+            return null;
         }
     }
 }

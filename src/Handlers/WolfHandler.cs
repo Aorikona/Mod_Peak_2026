@@ -43,6 +43,10 @@ namespace PeakClassMod.Handlers
         private GameObject _effectAnchor;
         private LineRenderer _circleRenderer;
 
+        private DaySegmentUtils _daySegmentUtils;
+        private string _lastTimeText = "";
+        private Camera _mainCamera;
+
 
         private void Start()
         {
@@ -73,6 +77,8 @@ namespace PeakClassMod.Handlers
             }
 
             _localInstance = this;
+            _daySegmentUtils = new DaySegmentUtils();
+            _mainCamera = Camera.main;
 
             CreateUI();
             CreateEffectAnchor();
@@ -86,6 +92,15 @@ namespace PeakClassMod.Handlers
             _baseClimbSpeed = _characterClimbing.climbSpeed;
         }
 
+        private void SetTimeText(string text)
+        {
+            if (_timeTextComponent != null && _lastTimeText != text)
+            {
+                _timeTextComponent.text = text;
+                _lastTimeText = text;
+            }
+        }
+
         private void Update()
         {
             if (_character == null || !_character.IsLocal || !ClassCheckUtil.IsWolf(_character))
@@ -94,17 +109,16 @@ namespace PeakClassMod.Handlers
             float pulse = 1f + Mathf.Sin(Time.time * CIRCLE_PULSE_SPEED) * CIRCLE_PULSE_AMPLITUDE;
             float widthMultiplier = CIRCLE_BASE_WIDTH * pulse;
             _circleRenderer.widthMultiplier = widthMultiplier;
-            var daySegmentUtils = new DaySegmentUtils();
 
             if (_character.IsGhost)
             {
-                if (daySegmentUtils.IsDay())
+                if (_daySegmentUtils.IsDay())
                 {
-                    _timeTextComponent.text = "Day";
+                    SetTimeText("Day");
                 }
                 else
                 {
-                    _timeTextComponent.text = "Night";
+                    SetTimeText("Night");
                 }
 
                 if (_circleRenderer != null)
@@ -121,9 +135,9 @@ namespace PeakClassMod.Handlers
             {
                 _nextEffectTime = Time.time + 1f;
 
-                if (daySegmentUtils.IsDay())
+                if (_daySegmentUtils.IsDay())
                 {
-                    _timeTextComponent.text = "Day";
+                    SetTimeText("Day");
 
                     HealFriends();
                     _circleRenderer.startColor = Color.green;
@@ -136,7 +150,7 @@ namespace PeakClassMod.Handlers
                 }
                 else
                 {
-                    _timeTextComponent.text = "Night";
+                    SetTimeText("Night");
 
                     DamageFriends();
                     _circleRenderer.startColor = Color.red;
@@ -160,7 +174,7 @@ namespace PeakClassMod.Handlers
 
             if (_circleRenderer != null)
             {
-                _circleRenderer.transform.position = pos + Vector3.up * 0.05f;
+                _circleRenderer.transform.position = new Vector3(pos.x, pos.y + 0.05f, pos.z);
             }
         }
 
@@ -183,14 +197,16 @@ namespace PeakClassMod.Handlers
 
             Vector3 pos = GetPlayerRealPosition();
 
-            _effectAnchor.transform.position = pos + new Vector3(0f, 0.1f, 0f);
+            _effectAnchor.transform.position = new Vector3(pos.x, pos.y + 0.1f, pos.z);
         }
 
         private Vector3 GetPlayerRealPosition()
         {
-            if (Camera.main != null)
+            if (_mainCamera == null) _mainCamera = Camera.main;
+
+            if (_mainCamera != null)
             {
-                Vector3 cam = Camera.main.transform.position;
+                Vector3 cam = _mainCamera.transform.position;
                 return new Vector3(cam.x, cam.y - 2f, cam.z);
             }
 

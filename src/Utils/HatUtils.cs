@@ -12,11 +12,15 @@ namespace PeakClassMod.Utils
     public static class HatUtils
     {
         private static string _lastLocalHatName;
+        private static PersistentPlayerDataService _playerDataService;
+
         public static void SetLastLocalHatName(string hatName) { if (!string.IsNullOrEmpty(hatName)) _lastLocalHatName = hatName; }
+
         public static bool TryGetHatName(Character ch, out string hatName)
         {
             hatName = null; if (ch == null) return false;
-            var ppds = GameHandler.GetService<PersistentPlayerDataService>();
+            if (_playerDataService == null) _playerDataService = GameHandler.GetService<PersistentPlayerDataService>();
+            var ppds = _playerDataService;
             PersistentPlayerData data = null;
             if (ch.photonView?.Owner != null) data = ppds?.GetPlayerData(ch.photonView.Owner);
             if (data == null && ch.IsLocal && PhotonNetwork.LocalPlayer != null) data = ppds?.GetPlayerData(PhotonNetwork.LocalPlayer);
