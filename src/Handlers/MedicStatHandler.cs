@@ -10,9 +10,9 @@ namespace PeakClassMod.Handlers
 {
     public class MedicStatHandler : MonoBehaviour
     {
-        private Character _character; private ClassModNetwork _network; private CharacterAfflictions _afflictions; private int _healsRemaining = ClassBalance.MEDIC_MAX_HEALS; private float _lastHealTime = 0f;
+        private Character _character; private Transform _transform; private ClassModNetwork _network; private CharacterAfflictions _afflictions; private int _healsRemaining = ClassBalance.MEDIC_MAX_HEALS; private float _lastHealTime = 0f;
         private void Start() { 
-            _character = GetComponent<Character>(); 
+            _character = GetComponent<Character>(); _transform = transform;
             _network = GetComponent<ClassModNetwork>(); 
             if (_character?.refs != null) 
                 _afflictions = _character.refs.afflictions; 

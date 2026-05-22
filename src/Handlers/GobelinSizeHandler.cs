@@ -6,12 +6,12 @@ namespace PeakClassMod.Handlers
 {
     public class GobelinSizeHandler : MonoBehaviour
     {
-        private Character _character;
+        private Character _character; private Transform _transform;
         private float _lastCheckTime = 0f;
 
         private void Start()
         {
-            _character = GetComponent<Character>();
+            _character = GetComponent<Character>(); _transform = transform;
         }
 
         private void Update()

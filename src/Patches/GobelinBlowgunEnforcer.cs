@@ -1,12 +1,25 @@
-﻿using HarmonyLib;
+﻿
 using UnityEngine;
+using TMPro;
 using PeakClassMod.Utils;
+
+using HarmonyLib;
+using System.Reflection;
+using System;
+using System.Runtime.CompilerServices;
 
 namespace PeakClassMod.Patches
 {
     // ==================================================
     // PROTECTION ABSOLUE DE LA SARBACANE (CLIENT FIX & SOULBOUND V2)
     // ==================================================
+    public static class PerformanceCache
+    {
+        public static ConditionalWeakTable<Item, StrongBox<bool>> IsBlowgunCache = new ConditionalWeakTable<Item, StrongBox<bool>>();
+        public static FieldInfo destroyOnUseField = AccessTools.Field(typeof(Item), "destroyOnUse");
+    }
+
+
     [HarmonyPatch(typeof(Item), "Update")]
     public class GobelinBlowgunEnforcer
     {
@@ -16,7 +29,22 @@ namespace PeakClassMod.Patches
             if (__instance == null) return;
 
             // On ne s'intéresse qu'aux sarbacanes
-            if (__instance.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
+            bool isBlowgun;
+            if (PerformanceCache.IsBlowgunCache.TryGetValue(__instance, out StrongBox<bool> isBlowgunBox))
+            {
+                isBlowgun = isBlowgunBox.Value;
+            }
+            else
+            {
+                isBlowgun = __instance.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0;
+                try
+                {
+                    PerformanceCache.IsBlowgunCache.Add(__instance, new StrongBox<bool>(isBlowgun));
+                }
+                catch (ArgumentException) { }
+            }
+
+            if (isBlowgun)
             {
                 Character holder = __instance.holderCharacter;
                 bool heldByGobelin = holder != null && ClassCheckUtil.IsGobelin(holder);
@@ -27,12 +55,11 @@ namespace PeakClassMod.Patches
                     // A. Logique Infini (Seulement Local pour éviter conflits réseau)
                     if (holder.IsLocal)
                     {
-                        var trav = Traverse.Create(__instance);
-                        var field = trav.Field("destroyOnUse");
+                        var field = PerformanceCache.destroyOnUseField;
                         // On force la NON-destruction
-                        if (field.FieldExists() && field.GetValue<bool>() == true)
+                        if (field != null && (bool)field.GetValue(__instance) == true)
                         {
-                            field.SetValue(false);
+                            field.SetValue(__instance, false);
                         }
 
                         // On force les munitions à -1 (infini)
@@ -44,7 +71,7 @@ namespace PeakClassMod.Patches
                                 if (usesData != null && usesData.Value != -1) usesData.Value = -1;
                             }
                         }
-                        catch { }
+                        catch (Exception ex) { PeakClassModPlugin.Log?.LogError(ex); }
                     }
 
                     // B. Logique Soulbound (Restrictions d'inventaire)
@@ -77,12 +104,11 @@ namespace PeakClassMod.Patches
 
                     // 2. RETIRER L'INFINI (Correction du bug pour les autres joueurs)
                     // On remet la destruction active
-                    var trav = Traverse.Create(__instance);
-                    var field = trav.Field("destroyOnUse");
-                    if (field.FieldExists())
+                    var field = PerformanceCache.destroyOnUseField;
+                    if (field != null)
                     {
                         // On remet à TRUE (l'objet doit se détruire après usage pour les non-Gobelins)
-                        field.SetValue(true);
+                        field.SetValue(__instance, true);
                     }
 
                     // On remet les munitions à 1 (usage unique) si elles étaient à -1
@@ -97,7 +123,7 @@ namespace PeakClassMod.Patches
                             }
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { PeakClassModPlugin.Log?.LogError(ex); }
                 }
             }
         }

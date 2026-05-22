@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+﻿
 using PeakClassMod.Handlers;
 using PeakClassMod;
 using System;
@@ -7,6 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
+
+using HarmonyLib;
 
 namespace PeakClassMod.Patches
 {

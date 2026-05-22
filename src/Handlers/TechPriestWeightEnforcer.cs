@@ -5,8 +5,8 @@ namespace PeakClassMod.Handlers
 {
     public class TechPriestWeightEnforcer : MonoBehaviour
     {
-        private Character _character; private CharacterAfflictions _afflictions; private bool _isActive; private int _weightIndex; private float _lastCheck = 0f;
-        private void Start() { _character = GetComponent<Character>(); _weightIndex = (int)CharacterAfflictions.STATUSTYPE.Weight; RefreshState(); }
+        private Character _character; private Transform _transform; private CharacterAfflictions _afflictions; private bool _isActive; private int _weightIndex; private float _lastCheck = 0f;
+        private void Start() { _character = GetComponent<Character>(); _transform = transform; _weightIndex = (int)CharacterAfflictions.STATUSTYPE.Weight; RefreshState(); }
         private void RefreshState() { _isActive = _character != null && ClassCheckUtil.IsTechPriest(_character); if (_isActive) _afflictions = _character.refs.afflictions; }
         private void LateUpdate()
         {

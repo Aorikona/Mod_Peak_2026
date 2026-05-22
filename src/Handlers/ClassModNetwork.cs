@@ -83,6 +83,6 @@ namespace PeakClassMod.Handlers
         }
 
         [PunRPC] public void ShowMedicHealEffectRPC(int remainingHeals) { PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Medic heal: {remainingHeals}"); }
-        [PunRPC] public void RPC_SyncClassActivation(string className, int actorNumber) { PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Player {actorNumber} class: {className}"); }
+        [PunRPC] public void RPC_SyncClassActivation(string className, int actorNumber) { string cleanClassName = className != null ? className.Replace("\n", "").Replace("\r", "") : ""; PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Player {actorNumber} class: {cleanClassName}"); }
     }
 }

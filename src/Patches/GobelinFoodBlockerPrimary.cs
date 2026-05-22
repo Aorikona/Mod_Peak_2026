@@ -2,16 +2,18 @@
 using PeakClassMod.Utils;
 using System;
 using UnityEngine;
-using HarmonyLib;
+
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using HarmonyLib;
+
 namespace PeakClassMod.Patches
 {
     [HarmonyPatch(typeof(Item), "StartUsePrimary")]
-    [HarmonyPriority(Priority.High)]
+    [HarmonyPriority(HarmonyLib.Priority.High)]
     public class GobelinFoodBlockerPrimary
     {
         static bool Prefix(Item __instance)

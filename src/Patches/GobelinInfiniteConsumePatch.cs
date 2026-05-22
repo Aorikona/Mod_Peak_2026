@@ -1,6 +1,8 @@
-﻿using HarmonyLib;
+﻿
 using UnityEngine;
 using PeakClassMod.Utils;
+
+using HarmonyLib;
 
 namespace PeakClassMod.Patches
 {

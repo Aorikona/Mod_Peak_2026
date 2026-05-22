@@ -18,8 +18,10 @@ namespace PeakClassMod.Handlers
     public class WolfHandler : MonoBehaviour
     {
         private static WolfHandler _localInstance;
+        private static TMP_FontAsset _cachedFontAsset;
 
-        private Character _character;
+        private Character _character; private Transform _transform;
+        private Camera _mainCamera;
         private ClassModNetwork _network;
         private CharacterClimbing _characterClimbing;
         private CharacterMovement _characterMovement;
@@ -46,7 +48,8 @@ namespace PeakClassMod.Handlers
 
         private void Start()
         {
-            _character = GetComponent<Character>();
+            _mainCamera = Camera.main;
+            _character = GetComponent<Character>(); _transform = transform;
 
             _followTarget = _character.transform.Find("animationPosition");
 
@@ -188,9 +191,9 @@ namespace PeakClassMod.Handlers
 
         private Vector3 GetPlayerRealPosition()
         {
-            if (Camera.main != null)
+            if (_mainCamera != null)
             {
-                Vector3 cam = Camera.main.transform.position;
+                Vector3 cam = _mainCamera.transform.position;
                 return new Vector3(cam.x, cam.y - 2f, cam.z);
             }
 
@@ -358,15 +361,16 @@ namespace PeakClassMod.Handlers
             GameObject parent =
                 GameObject.Find("GAME/GUIManager/Canvas_HUD");
 
-            TMP_FontAsset fontAsset = null;
-
-            foreach (var t in GameObject.FindObjectsOfType<TextMeshProUGUI>(true))
+            if (_cachedFontAsset == null)
             {
-                if (t.font != null &&
-                    t.font.name == "DarumaDropOne-Regular SDF")
+                foreach (var t in GameObject.FindObjectsOfType<TextMeshProUGUI>(true))
                 {
-                    fontAsset = t.font;
-                    break;
+                    if (t.font != null &&
+                        t.font.name == "DarumaDropOne-Regular SDF")
+                    {
+                        _cachedFontAsset = t.font;
+                        break;
+                    }
                 }
             }
 
@@ -380,7 +384,7 @@ namespace PeakClassMod.Handlers
 
             _timeTextComponent.fontSize = 40;
             _timeTextComponent.color = Color.white;
-            _timeTextComponent.font = fontAsset;
+            _timeTextComponent.font = _cachedFontAsset;
         }
     }
 }
