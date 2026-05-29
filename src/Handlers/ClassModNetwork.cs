@@ -31,30 +31,34 @@ namespace PeakClassMod.Handlers
                 if (_character?.player?.itemSlots != null && _character.player.itemSlots.Length > 0 && !_character.player.itemSlots[0].IsEmpty()) { inventoryReady = true; break; }
                 timeout -= 0.1f; yield return new WaitForSeconds(0.1f);
             }
-            string myHatName = "None"; if (HatUtils.TryGetHatName(_character, out string d)) myHatName = d;
-            if (inventoryReady || timeout <= 0) photonView.RPC("RPC_HostGiveItems", RpcTarget.MasterClient, myHatName);
+            if (inventoryReady || timeout <= 0) photonView.RPC("RPC_HostGiveItems", RpcTarget.MasterClient);
         }
 
         [PunRPC]
-        public void RPC_HostGiveItems(string clientHatName, PhotonMessageInfo info)
+        public void RPC_HostGiveItems(PhotonMessageInfo info)
         {
             if (!PhotonNetwork.IsMasterClient) return;
             int actorID = info.Sender.ActorNumber;
             if (HasReceivedStartItems.Contains(actorID)) return;
             if (_hostGiveCooldown.TryGetValue(actorID, out float lastTime)) if (Time.time - lastTime < ClassBalance.ITEM_GIVE_COOLDOWN) return;
             _hostGiveCooldown[actorID] = Time.time;
-            StartCoroutine(HostGiveItemsRoutine(clientHatName, info.Sender));
+            StartCoroutine(HostGiveItemsRoutine(info.Sender));
         }
 
-        private IEnumerator HostGiveItemsRoutine(string hatName, Photon.Realtime.Player requestor)
+        private IEnumerator HostGiveItemsRoutine(Photon.Realtime.Player requestor)
         {
-            var itemsToGive = PeakClassModPlugin.BuildStartItemsByHatName(hatName);
-            if (itemsToGive.Count == 0) yield break;
             Character targetChar = null;
             int actorNumber = requestor.ActorNumber;
             if (_characterCache.TryGetValue(actorNumber, out Character cachedChar) && cachedChar != null) targetChar = cachedChar;
             else foreach (var ch in Character.AllCharacters) if (ch?.photonView?.Owner == requestor) { targetChar = ch; _characterCache[actorNumber] = ch; break; }
             if (targetChar?.player == null) yield break;
+
+            string hatName = "None";
+            if (HatUtils.TryGetHatName(targetChar, out string d)) hatName = d;
+
+            var itemsToGive = PeakClassModPlugin.BuildStartItemsByHatName(hatName);
+            if (itemsToGive.Count == 0) yield break;
+
             HasReceivedStartItems.Add(actorNumber);
             foreach (var itemName in itemsToGive)
             {
@@ -83,6 +87,6 @@ namespace PeakClassMod.Handlers
         }
 
         [PunRPC] public void ShowMedicHealEffectRPC(int remainingHeals) { PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Medic heal: {remainingHeals}"); }
-        [PunRPC] public void RPC_SyncClassActivation(string className, int actorNumber) { PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Player {actorNumber} class: {className}"); }
+        [PunRPC] public void RPC_SyncClassActivation(string className, int actorNumber) { className = className?.Replace("\n", "")?.Replace("\r", ""); PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Player {actorNumber} class: {className}"); }
     }
 }

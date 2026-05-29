@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using UnityEngine;
 using HarmonyLib;
 using UnityEngine.UI;
-using UnityEngine.Networking;
 using Peak;
 using System.IO;
 using BepInEx;
@@ -44,10 +43,7 @@ namespace PeakClassMod.Utils
             Assembly assembly = Assembly.GetExecutingAssembly();
             string resourceName = "Mod_Peak_2026.assets.image.HatSign.png";
 
-            string folderPath = Path.Combine(Paths.PluginPath, "PeakClassModAssets");
-            Directory.CreateDirectory(folderPath);
-            string tempPath = Path.Combine(folderPath, "temp_HatSign.png");
-
+            Texture2D tex = new Texture2D(2, 2);
             using (Stream stream = assembly.GetManifestResourceStream(resourceName))
             {
                 if (stream == null)
@@ -56,48 +52,39 @@ namespace PeakClassMod.Utils
                     return;
                 }
 
-                using (FileStream file = new FileStream(tempPath, FileMode.Create, FileAccess.Write))
-                {
-                    stream.CopyTo(file);
-                }
+                byte[] buffer = new byte[stream.Length];
+                stream.Read(buffer, 0, buffer.Length);
+                tex.LoadImage(buffer);
             }
 
-            if (ImageLoader.Instance == null)
+            if (tex == null)
             {
-                new GameObject("ImageLoader").AddComponent<ImageLoader>();
+                Debug.LogError("Texture NULL");
+                return;
             }
 
-            ImageLoader.Instance.Load(tempPath, (tex) =>
-            {
-                if (tex == null)
-                {
-                    Debug.LogError("Texture NULL");
-                    return;
-                }
+            Sprite sprite = Sprite.Create(
+                tex,
+                new Rect(0, 0, tex.width, tex.height),
+                new Vector2(0.5f, 0.5f)
+            );
 
-                Sprite sprite = Sprite.Create(
-                    tex,
-                    new Rect(0, 0, tex.width, tex.height),
-                    new Vector2(0.5f, 0.5f)
-                );
+            img.sprite = sprite;
+            img.color = Color.white;
 
-                img.sprite = sprite;
-                img.color = Color.white;
+            hatSign.transform.position = new Vector3(-6.4f, 5.15f, 122.5f);
+            hatSign.transform.rotation = Quaternion.Euler(0, 0, 0);
+            hatSign.transform.localScale = new Vector3(0.038f, 0.035f, 0.035f);
 
-                hatSign.transform.position = new Vector3(-6.4f, 5.15f, 122.5f);
-                hatSign.transform.rotation = Quaternion.Euler(0, 0, 0);
-                hatSign.transform.localScale = new Vector3(0.038f, 0.035f, 0.035f);
+            var rect = panelObj.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(400, 300);
+            var imageRect = imageObj.GetComponent<RectTransform>();
+            float scaleFactor = 1.1f;
 
-                var rect = panelObj.GetComponent<RectTransform>();
-                rect.sizeDelta = new Vector2(400, 300);
-                var imageRect = imageObj.GetComponent<RectTransform>();
-                float scaleFactor = 1.1f;
+            float widthUI = 380 * scaleFactor;
+            float heightUI = widthUI * ((float)height / width);
 
-                float widthUI = 380 * scaleFactor;
-                float heightUI = widthUI * ((float)height / width);
-
-                imageRect.sizeDelta = new Vector2(widthUI, heightUI);
-            });
+            imageRect.sizeDelta = new Vector2(widthUI, heightUI);
         }
     }
 }
