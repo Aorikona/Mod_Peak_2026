@@ -42,10 +42,13 @@ namespace PeakClassMod.Handlers
 
         private GameObject _effectAnchor;
         private LineRenderer _circleRenderer;
+        private Camera _mainCamera;
+        private HashSet<Character> _alreadyHit = new HashSet<Character>();
 
 
         private void Start()
         {
+            _mainCamera = Camera.main;
             _character = GetComponent<Character>();
 
             _followTarget = _character.transform.Find("animationPosition");
@@ -91,20 +94,22 @@ namespace PeakClassMod.Handlers
             if (_character == null || !_character.IsLocal || !ClassCheckUtil.IsWolf(_character))
                 return;
 
-            float pulse = 1f + Mathf.Sin(Time.time * CIRCLE_PULSE_SPEED) * CIRCLE_PULSE_AMPLITUDE;
-            float widthMultiplier = CIRCLE_BASE_WIDTH * pulse;
-            _circleRenderer.widthMultiplier = widthMultiplier;
-            var daySegmentUtils = new DaySegmentUtils();
+            if (_circleRenderer != null)
+            {
+                float pulse = 1f + Mathf.Sin(Time.time * CIRCLE_PULSE_SPEED) * CIRCLE_PULSE_AMPLITUDE;
+                float widthMultiplier = CIRCLE_BASE_WIDTH * pulse;
+                _circleRenderer.widthMultiplier = widthMultiplier;
+            }
+
+            bool isDay = DaySegmentUtils.IsDay();
 
             if (_character.IsGhost)
             {
-                if (daySegmentUtils.IsDay())
+                if (_timeTextComponent != null)
                 {
-                    _timeTextComponent.text = "Day";
-                }
-                else
-                {
-                    _timeTextComponent.text = "Night";
+                    string newText = isDay ? "Day" : "Night";
+                    if (_timeTextComponent.text != newText)
+                        _timeTextComponent.text = newText;
                 }
 
                 if (_circleRenderer != null)
@@ -117,17 +122,24 @@ namespace PeakClassMod.Handlers
                 if (_circleRenderer != null)
                     _circleRenderer.enabled = true;
             }
+
             if (Time.time >= _nextEffectTime)
             {
-                _nextEffectTime = Time.time + 1f;
+                _nextEffectTime = Time.time + ClassBalance.WOLF_EFFECT_TICK_INTERVAL;
 
-                if (daySegmentUtils.IsDay())
+                if (isDay)
                 {
-                    _timeTextComponent.text = "Day";
+                    if (_timeTextComponent != null && _timeTextComponent.text != "Day")
+                        _timeTextComponent.text = "Day";
 
                     HealFriends();
-                    _circleRenderer.startColor = Color.green;
-                    _circleRenderer.endColor = Color.green;
+
+                    if (_circleRenderer != null)
+                    {
+                        _circleRenderer.startColor = Color.green;
+                        _circleRenderer.endColor = Color.green;
+                    }
+
                     _characterClimbing.climbSpeed =
                         _baseClimbSpeed * ClassBalance.WOLF_CLIMB_SPEED_MULT;
 
@@ -136,11 +148,17 @@ namespace PeakClassMod.Handlers
                 }
                 else
                 {
-                    _timeTextComponent.text = "Night";
+                    if (_timeTextComponent != null && _timeTextComponent.text != "Night")
+                        _timeTextComponent.text = "Night";
 
                     DamageFriends();
-                    _circleRenderer.startColor = Color.red;
-                    _circleRenderer.endColor = Color.red;
+
+                    if (_circleRenderer != null)
+                    {
+                        _circleRenderer.startColor = Color.red;
+                        _circleRenderer.endColor = Color.red;
+                    }
+
                     _characterClimbing.climbSpeed =
                         _baseClimbSpeed;
 
@@ -188,9 +206,9 @@ namespace PeakClassMod.Handlers
 
         private Vector3 GetPlayerRealPosition()
         {
-            if (Camera.main != null)
+            if (_mainCamera != null)
             {
-                Vector3 cam = Camera.main.transform.position;
+                Vector3 cam = _mainCamera.transform.position;
                 return new Vector3(cam.x, cam.y - 2f, cam.z);
             }
 
@@ -213,7 +231,7 @@ namespace PeakClassMod.Handlers
             Collider[] hitColliders =
                 Physics.OverlapSphere(GetEffectCenterPosition(), EFFECT_RADIUS);
 
-            HashSet<Character> alreadyHit = new HashSet<Character>();
+            _alreadyHit.Clear();
 
             foreach (var hit in hitColliders)
             {
@@ -225,10 +243,10 @@ namespace PeakClassMod.Handlers
                 if (other == _character)
                     continue;
 
-                if (alreadyHit.Contains(other))
+                if (_alreadyHit.Contains(other))
                     continue;
 
-                alreadyHit.Add(other);
+                _alreadyHit.Add(other);
 
                 float now = Time.time;
 
@@ -264,7 +282,7 @@ namespace PeakClassMod.Handlers
             Collider[] hitColliders =
                 Physics.OverlapSphere(GetEffectCenterPosition(), EFFECT_RADIUS);
 
-            HashSet<Character> alreadyHit = new HashSet<Character>();
+            _alreadyHit.Clear();
 
             foreach (var hit in hitColliders)
             {
@@ -276,10 +294,10 @@ namespace PeakClassMod.Handlers
                 if (other == _character)
                     continue;
 
-                if (alreadyHit.Contains(other))
+                if (_alreadyHit.Contains(other))
                     continue;
 
-                alreadyHit.Add(other);
+                _alreadyHit.Add(other);
 
                 float now = Time.time;
 
@@ -357,6 +375,12 @@ namespace PeakClassMod.Handlers
         {
             GameObject parent =
                 GameObject.Find("GAME/GUIManager/Canvas_HUD");
+
+            if (parent == null)
+            {
+                PeakClassModPlugin.Log?.LogWarning("WolfHandler: Could not find Canvas_HUD to create UI.");
+                return;
+            }
 
             TMP_FontAsset fontAsset = null;
 

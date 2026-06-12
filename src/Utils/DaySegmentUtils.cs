@@ -6,10 +6,15 @@ using System.Threading.Tasks;
 
 namespace PeakClassMod.Utils
 {
-    internal class DaySegmentUtils
+    public static class DaySegmentUtils
     {
-        public bool IsDay()
+        public static bool IsDay()
         {
+            if (DayNightManager.instance == null)
+            {
+                return true;
+            }
+
             string timeOfDayString = DayNightManager.instance.TimeOfDayString();
             if (timeOfDayString == "night" || timeOfDayString == "evening")
             {
