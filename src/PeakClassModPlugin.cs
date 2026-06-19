@@ -63,7 +63,7 @@ namespace PeakClassMod
 
         private void OnDestroy()
         {
-            try { harmony?.UnpatchSelf(); } catch { }
+            try { harmony?.UnpatchSelf(); } catch (Exception ex) { Log?.LogError($"[PeakClassModPlugin] Error during UnpatchSelf: {ex}"); }
             if (_callbacksGO != null) UnityEngine.Object.Destroy(_callbacksGO);
         }
 

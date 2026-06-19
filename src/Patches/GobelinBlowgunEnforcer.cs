@@ -16,7 +16,7 @@ namespace PeakClassMod.Patches
             if (__instance == null) return;
 
             // On ne s'intéresse qu'aux sarbacanes
-            if (__instance.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
+            if (PerformanceCache.IsBlowgun(__instance))
             {
                 Character holder = __instance.holderCharacter;
                 bool heldByGobelin = holder != null && ClassCheckUtil.IsGobelin(holder);
@@ -27,12 +27,13 @@ namespace PeakClassMod.Patches
                     // A. Logique Infini (Seulement Local pour éviter conflits réseau)
                     if (holder.IsLocal)
                     {
-                        var trav = Traverse.Create(__instance);
-                        var field = trav.Field("destroyOnUse");
                         // On force la NON-destruction
-                        if (field.FieldExists() && field.GetValue<bool>() == true)
+                        if (PerformanceCache._destroyOnUseField != null)
                         {
-                            field.SetValue(false);
+                            if ((bool)PerformanceCache._destroyOnUseField.GetValue(__instance))
+                            {
+                                PerformanceCache._destroyOnUseField.SetValue(__instance, false);
+                            }
                         }
 
                         // On force les munitions à -1 (infini)
@@ -44,7 +45,10 @@ namespace PeakClassMod.Patches
                                 if (usesData != null && usesData.Value != -1) usesData.Value = -1;
                             }
                         }
-                        catch { }
+                        catch (System.Exception ex)
+                        {
+                            PeakClassModPlugin.Log?.LogError($"[GobelinBlowgunEnforcer] Error setting infinite ammo: {ex}");
+                        }
                     }
 
                     // B. Logique Soulbound (Restrictions d'inventaire)
@@ -77,12 +81,9 @@ namespace PeakClassMod.Patches
 
                     // 2. RETIRER L'INFINI (Correction du bug pour les autres joueurs)
                     // On remet la destruction active
-                    var trav = Traverse.Create(__instance);
-                    var field = trav.Field("destroyOnUse");
-                    if (field.FieldExists())
+                    if (PerformanceCache._destroyOnUseField != null)
                     {
-                        // On remet à TRUE (l'objet doit se détruire après usage pour les non-Gobelins)
-                        field.SetValue(true);
+                        PerformanceCache._destroyOnUseField.SetValue(__instance, true);
                     }
 
                     // On remet les munitions à 1 (usage unique) si elles étaient à -1
@@ -97,7 +98,10 @@ namespace PeakClassMod.Patches
                             }
                         }
                     }
-                    catch { }
+                    catch (System.Exception ex)
+                    {
+                        PeakClassModPlugin.Log?.LogError($"[GobelinBlowgunEnforcer] Error restoring ammo count: {ex}");
+                    }
                 }
             }
         }

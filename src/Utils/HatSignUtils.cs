@@ -44,10 +44,6 @@ namespace PeakClassMod.Utils
             Assembly assembly = Assembly.GetExecutingAssembly();
             string resourceName = "Mod_Peak_2026.assets.image.HatSign.png";
 
-            string folderPath = Path.Combine(Paths.PluginPath, "PeakClassModAssets");
-            Directory.CreateDirectory(folderPath);
-            string tempPath = Path.Combine(folderPath, "temp_HatSign.png");
-
             using (Stream stream = assembly.GetManifestResourceStream(resourceName))
             {
                 if (stream == null)
@@ -56,48 +52,40 @@ namespace PeakClassMod.Utils
                     return;
                 }
 
-                using (FileStream file = new FileStream(tempPath, FileMode.Create, FileAccess.Write))
+                byte[] buffer = new byte[stream.Length];
+                stream.Read(buffer, 0, buffer.Length);
+
+                Texture2D tex = new Texture2D(2, 2);
+                if (tex.LoadImage(buffer))
                 {
-                    stream.CopyTo(file);
+                    Sprite sprite = Sprite.Create(
+                        tex,
+                        new Rect(0, 0, tex.width, tex.height),
+                        new Vector2(0.5f, 0.5f)
+                    );
+
+                    img.sprite = sprite;
+                    img.color = Color.white;
+
+                    hatSign.transform.position = new Vector3(-6.4f, 5.15f, 122.5f);
+                    hatSign.transform.rotation = Quaternion.Euler(0, 0, 0);
+                    hatSign.transform.localScale = new Vector3(0.038f, 0.035f, 0.035f);
+
+                    var rect = panelObj.GetComponent<RectTransform>();
+                    rect.sizeDelta = new Vector2(400, 300);
+                    var imageRect = imageObj.GetComponent<RectTransform>();
+                    float scaleFactor = 1.1f;
+
+                    float widthUI = 380 * scaleFactor;
+                    float heightUI = widthUI * ((float)height / width);
+
+                    imageRect.sizeDelta = new Vector2(widthUI, heightUI);
+                }
+                else
+                {
+                    Debug.LogError("Échec du chargement de l'image (LoadImage).");
                 }
             }
-
-            if (ImageLoader.Instance == null)
-            {
-                new GameObject("ImageLoader").AddComponent<ImageLoader>();
-            }
-
-            ImageLoader.Instance.Load(tempPath, (tex) =>
-            {
-                if (tex == null)
-                {
-                    Debug.LogError("Texture NULL");
-                    return;
-                }
-
-                Sprite sprite = Sprite.Create(
-                    tex,
-                    new Rect(0, 0, tex.width, tex.height),
-                    new Vector2(0.5f, 0.5f)
-                );
-
-                img.sprite = sprite;
-                img.color = Color.white;
-
-                hatSign.transform.position = new Vector3(-6.4f, 5.15f, 122.5f);
-                hatSign.transform.rotation = Quaternion.Euler(0, 0, 0);
-                hatSign.transform.localScale = new Vector3(0.038f, 0.035f, 0.035f);
-
-                var rect = panelObj.GetComponent<RectTransform>();
-                rect.sizeDelta = new Vector2(400, 300);
-                var imageRect = imageObj.GetComponent<RectTransform>();
-                float scaleFactor = 1.1f;
-
-                float widthUI = 380 * scaleFactor;
-                float heightUI = widthUI * ((float)height / width);
-
-                imageRect.sizeDelta = new Vector2(widthUI, heightUI);
-            });
         }
     }
 }
