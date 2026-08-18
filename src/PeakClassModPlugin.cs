@@ -41,6 +41,7 @@ namespace PeakClassMod
         public static bool astronautActive = false;
         public static bool gobelinActive = false;
         public static bool wolfActive = false;
+        public static bool adventurerActive = false;
         public static string currentClass = "None";
 
         private GameObject _callbacksGO;
@@ -87,6 +88,7 @@ namespace PeakClassMod
                 case "Hat_NinjaHeadband": items.Add("RopeSpool"); items.Add("RopeSpool"); break;
                 case "Hat_Astronaut": items.Add("BalloonBunch"); break;
                 case "Hat_Midsummer": items.Add(ClassBalance.BLOWGUN); items.Add("MagicBean"); break;
+                case "Hat_DesertHat": items.Add("Pirate Compass"); break;
             }
             return items;
         }

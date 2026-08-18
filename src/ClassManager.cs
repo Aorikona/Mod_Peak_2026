@@ -27,7 +27,7 @@ namespace PeakClassMod
             PeakClassModPlugin.scoutActive = false; PeakClassModPlugin.medicActive = false; PeakClassModPlugin.techPriestActive = false;
             PeakClassModPlugin.mushroomancerActive = false; PeakClassModPlugin.greatEpeeActive = false; PeakClassModPlugin.rogueActive = false;
             PeakClassModPlugin.generalActive = false; PeakClassModPlugin.astronautActive = false; PeakClassModPlugin.gobelinActive = false;
-            PeakClassModPlugin.wolfActive = false;
+            PeakClassModPlugin.wolfActive = false; PeakClassModPlugin.adventurerActive = false;
             PeakClassModPlugin.currentClass = "None";
         }
 
@@ -41,6 +41,7 @@ namespace PeakClassMod
         public static void ActivateAstronautClass() { ResetAllFlags(); PeakClassModPlugin.astronautActive = true; PeakClassModPlugin.currentClass = "Astronaut"; }
         public static void ActivateGobelinClass() { ResetAllFlags(); PeakClassModPlugin.gobelinActive = true; PeakClassModPlugin.currentClass = "Gobelin"; }
         public static void ActivateWolfClass() { ResetAllFlags(); PeakClassModPlugin.wolfActive = true; PeakClassModPlugin.currentClass = "Wolf"; }
+        public static void ActivateAdventurerClass() { ResetAllFlags(); PeakClassModPlugin.adventurerActive = true; PeakClassModPlugin.currentClass = "Adventurer"; }
 
         public static void DeactivateAllClasses() { ResetAllFlags(); if (Character.localCharacter != null) Character.localCharacter.data.jumpsRemaining = 1; }
 
@@ -54,6 +55,7 @@ namespace PeakClassMod
         public static bool IsAstronautActive() => PeakClassModPlugin.astronautActive;
         public static bool IsGobelinActive() => PeakClassModPlugin.gobelinActive;
         public static bool IsWolfActive() => PeakClassModPlugin.wolfActive;
+        public static bool IsAdventurerActive() => PeakClassModPlugin.adventurerActive;
 
         private static readonly string[] ZeroStaminaFungi = new[] { "ShelfShroom", "BounceShroom", "CloudFungus" };
 

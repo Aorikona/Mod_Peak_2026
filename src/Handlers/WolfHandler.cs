@@ -360,7 +360,7 @@ namespace PeakClassMod.Handlers
 
             TMP_FontAsset fontAsset = null;
 
-            foreach (var t in GameObject.FindObjectsOfType<TextMeshProUGUI>(true))
+            foreach (var t in GameObject.FindObjectsByType<TextMeshProUGUI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
                 if (t.font != null &&
                     t.font.name == "DarumaDropOne-Regular SDF")

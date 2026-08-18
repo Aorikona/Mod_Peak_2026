@@ -34,6 +34,7 @@ namespace PeakClassMod.Patches
             else if (ClassCheckUtil.IsGobelin(lc)) ClassManager.ActivateGobelinClass();
             else if (ClassCheckUtil.IsScout(lc)) ClassManager.ActivateScoutClass();
             else if (ClassCheckUtil.IsWolf(lc)) ClassManager.ActivateWolfClass();
+            else if (ClassCheckUtil.IsAdventurer(lc)) ClassManager.ActivateAdventurerClass();
         }
     }
 }

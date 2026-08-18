@@ -24,6 +24,7 @@ namespace PeakClassMod.Patches
                 p.EnsureComponent<TechPriestWeightEnforcer>(__instance.gameObject);
                 p.EnsureComponent<GobelinSizeHandler>(__instance.gameObject);
                 p.EnsureComponent<WolfHandler>(__instance.gameObject);
+                p.EnsureComponent<AdventurerHandler>(__instance.gameObject);
             }
         }
     }
