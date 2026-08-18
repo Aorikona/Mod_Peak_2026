@@ -67,6 +67,7 @@ namespace PeakClassMod.Handlers
 			if (hatName.Contains("Astronaut")) return "Astronaut";
 			if (hatName.Contains("Midsummer") || hatName.Contains("Gobelin")) return "Gobelin";
 			if (hatName.Contains("WolfEars") || hatName.Contains("Wolf")) return "Wolf";
+			if (hatName.Contains("DesertHat")) return "Adventurer";
 
 			return "None";
 		}
@@ -110,6 +111,7 @@ namespace PeakClassMod.Handlers
 				case "Astronaut": ClassManager.ActivateAstronautClass(); break;
 				case "Gobelin": ClassManager.ActivateGobelinClass(); break;
 				case "Wolf": ClassManager.ActivateWolfClass(); break;
+				case "Adventurer": ClassManager.ActivateAdventurerClass(); break;
 				default:
 					ClassManager.DeactivateAllClasses();
 					break;

@@ -15,7 +15,7 @@ namespace PeakClassMod.Utils
 		{
 			"Hat_Scoutmaster", "Hat_Medic", "MedicHelmet", "Hat_Crab",
 			"Hat_Mushroom", "Hat_Propeller", "Hat_NinjaHeadband",
-			"Hat_Bandana", "Hat_Captain", "Hat_Astronaut", "Hat_Midsummer", "Hat_WolfEars"
+			"Hat_Bandana", "Hat_Captain", "Hat_Astronaut", "Hat_Midsummer", "Hat_WolfEars", "Hat_DesertHat"
 		};
 
 		public static void SetLastLocalHatName(string hatName)
