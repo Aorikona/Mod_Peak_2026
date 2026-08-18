@@ -1,26 +1,38 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using HarmonyLib;
+using PeakClassMod.Utils;
+using UnityEngine;
 
-namespace Mod_Peak_2026.src.Patches
+namespace PeakClassMod.Patches
 {
-    using HarmonyLib;
-    using PeakClassMod.Utils;
-    using UnityEngine;
+	[HarmonyPatch(typeof(Backpack), nameof(Backpack.Wear))]
+	public static class BackpackBlocker
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Backpack __instance, Character interactor)
+		{
+			if (interactor == null) return true;
 
-    [HarmonyPatch(typeof(Backpack), "Wear")]
-    public class BackpackBlocker
-    {
-        static bool Prefix(Character interactor)
-        {
-            if (ClassCheckUtil.IsWolf(interactor)) {
-                Debug.LogWarning("Cannot carry backpacks!");
-                return false;
-            }
-            return true; 
-        }
+			if (ClassCheckUtil.IsWolf(interactor) || ClassManager.IsWolfActive())
+			{
+				return false; // Bloque l'équipement du sac
+			}
+			return true;
+		}
+	}
 
-    }
+	[HarmonyPatch(typeof(Backpack), "Interact")]
+	public static class BackpackInteractBlocker
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Backpack __instance, Character interactor)
+		{
+			if (interactor == null) return true;
+
+			if (ClassCheckUtil.IsWolf(interactor) || ClassManager.IsWolfActive())
+			{
+				return false;
+			}
+			return true;
+		}
+	}
 }

@@ -1,24 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using UnityEngine;
 
 namespace PeakClassMod.Utils
 {
-    internal class DaySegmentUtils
-    {
-        public bool IsDay()
-        {
-            string timeOfDayString = DayNightManager.instance.TimeOfDayString();
-            if (timeOfDayString == "night" || timeOfDayString == "evening")
-            {
-                return false;
-            }
-            else
-            {
-                return true;
-            }
-        }
-    }
+	public static class DaySegmentUtils
+	{
+		public static bool IsDay()
+		{
+			if (DayNightManager.instance == null) return true;
+			string timeOfDayString = DayNightManager.instance.TimeOfDayString();
+			return timeOfDayString != "night" && timeOfDayString != "evening";
+		}
+	}
 }

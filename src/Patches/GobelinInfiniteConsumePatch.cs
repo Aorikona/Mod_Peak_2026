@@ -4,41 +4,29 @@ using PeakClassMod.Utils;
 
 namespace PeakClassMod.Patches
 {
-    // ==================================================
-    // GOBELIN INFINITE ITEM FIX (CORRIGÉ)
-    // ==================================================
+	[HarmonyPatch(typeof(Item), "Consume")]
+	public class GobelinInfiniteConsumePatch
+	{
+		static bool Prefix(Item __instance)
+		{
+			if (__instance == null || __instance.holderCharacter == null) return true;
 
-    [HarmonyPatch(typeof(Item), "Consume")]
-    public class GobelinInfiniteConsumePatch
-    {
-        static bool Prefix(Item __instance)
-        {
-            // Sécurité de base
-            if (__instance == null || __instance.holderCharacter == null) return true;
+			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter) || ClassManager.IsGobelinActive())
+			{
+				if (GobelinBlowgunEnforcer.IsBlowgun(__instance))
+				{
+					__instance.holderCharacter.data.lastConsumedItem = Time.time;
 
-            // 1. Est-ce un Gobelin ?
-            if (ClassCheckUtil.IsGobelin(__instance.holderCharacter))
-            {
-                // 2. Est-ce la Sarbacane ?
-                if (__instance.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    // --- MANUELLEMENT FINIR L'ACTION ---
+					if (__instance.holderCharacter.refs?.animator != null)
+					{
+						__instance.holderCharacter.refs.animator.SetBool("Consumed Item", true);
+					}
 
-                    // A. Mettre à jour le timer (pour dire "c'est bon, il a tiré")
-                    __instance.holderCharacter.data.lastConsumedItem = Time.time;
+					return false;
+				}
+			}
 
-                    // B. DÉBLOQUER L'ANIMATION (C'est ça qui bloquait !)
-                    // On dit à l'animateur : "L'objet est consommé, reviens en position normale"
-                    if (__instance.holderCharacter.refs != null && __instance.holderCharacter.refs.animator != null)
-                    {
-                        __instance.holderCharacter.refs.animator.SetBool("Consumed Item", true);
-                    }
-
-                    return false;
-                }
-            }
-
-            return true;
-        }
-    }
+			return true;
+		}
+	}
 }
