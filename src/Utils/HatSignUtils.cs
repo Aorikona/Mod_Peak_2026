@@ -9,9 +9,7 @@ using UnityEngine.UI;
 using UnityEngine.Networking;
 using Peak;
 using System.IO;
-using BepInEx;
 using System.Reflection;
-using System.Resources;
 
 namespace PeakClassMod.Utils
 {
@@ -44,10 +42,6 @@ namespace PeakClassMod.Utils
             Assembly assembly = Assembly.GetExecutingAssembly();
             string resourceName = "Mod_Peak_2026.assets.image.HatSign.png";
 
-            string folderPath = Path.Combine(Paths.PluginPath, "PeakClassModAssets");
-            Directory.CreateDirectory(folderPath);
-            string tempPath = Path.Combine(folderPath, "temp_HatSign.png");
-
             using (Stream stream = assembly.GetManifestResourceStream(resourceName))
             {
                 if (stream == null)
@@ -56,19 +50,12 @@ namespace PeakClassMod.Utils
                     return;
                 }
 
-                using (FileStream file = new FileStream(tempPath, FileMode.Create, FileAccess.Write))
-                {
-                    stream.CopyTo(file);
-                }
-            }
+                byte[] buffer = new byte[(int)stream.Length];
+                stream.Read(buffer, 0, buffer.Length);
 
-            if (ImageLoader.Instance == null)
-            {
-                new GameObject("ImageLoader").AddComponent<ImageLoader>();
-            }
+                Texture2D tex = new Texture2D(2, 2);
+                tex.LoadImage(buffer);
 
-            ImageLoader.Instance.Load(tempPath, (tex) =>
-            {
                 if (tex == null)
                 {
                     Debug.LogError("Texture NULL");
@@ -97,7 +84,7 @@ namespace PeakClassMod.Utils
                 float heightUI = widthUI * ((float)height / width);
 
                 imageRect.sizeDelta = new Vector2(widthUI, heightUI);
-            });
+            }
         }
     }
 }

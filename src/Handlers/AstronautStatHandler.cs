@@ -15,7 +15,7 @@ namespace PeakClassMod.Handlers
         private void InitializeFields() { if (_fieldsInitialized || _travMove == null) return; _jumpImpulseField = _travMove.Field("jumpImpulse"); _sprintMultiplierField = _travMove.Field("sprintMultiplier"); _velocityField = _travMove.Field("velocity"); _fieldsInitialized = true; }
         private void Update() { if (_character == null || !_character.IsLocal || !ClassManager.IsAstronautActive()) return; if (_character.input.jumpWasPressed && _character.data.isGrounded) { StopAllCoroutines(); StartCoroutine(ApplyWindWalkDelayed()); } }
         private IEnumerator ApplyWindWalkDelayed() { yield return new WaitForSeconds(1f); if (ClassManager.IsAstronautActive() && _character != null && !_character.data.isGrounded) TriggerWindWalk(); }
-        private void TriggerWindWalk() { try { _character.refs?.afflictions?.AddAffliction(new Affliction_LowGravity(3, ClassBalance.ASTRONAUT_LOW_GRAV_DURATION), true); } catch { } }
+        private void TriggerWindWalk() { try { _character.refs?.afflictions?.AddAffliction(new Affliction_LowGravity(3, ClassBalance.ASTRONAUT_LOW_GRAV_DURATION), true); } catch (System.Exception ex) { PeakClassModPlugin.Log?.LogError(ex); } }
         private void FixedUpdate()
         {
             if (_character == null || !_character.IsLocal || !_fieldsInitialized) return;
