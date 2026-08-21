@@ -29,6 +29,10 @@ namespace PeakClassMod.Handlers
         private float _baseClimbSpeed;
         private float _baseSprintSpeed;
         private float _nextEffectTime = 0f;
+
+        private Camera _mainCamera;
+        private HashSet<Character> _hitCache = new HashSet<Character>();
+
         private CharacterController _cc;
 
         private TextMeshProUGUI _timeTextComponent;
@@ -73,6 +77,8 @@ namespace PeakClassMod.Handlers
             }
 
             _localInstance = this;
+
+            _mainCamera = Camera.main;
 
             CreateUI();
             CreateEffectAnchor();
@@ -188,9 +194,9 @@ namespace PeakClassMod.Handlers
 
         private Vector3 GetPlayerRealPosition()
         {
-            if (Camera.main != null)
+            if (_mainCamera != null)
             {
-                Vector3 cam = Camera.main.transform.position;
+                Vector3 cam = _mainCamera.transform.position;
                 return new Vector3(cam.x, cam.y - 2f, cam.z);
             }
 
@@ -213,7 +219,7 @@ namespace PeakClassMod.Handlers
             Collider[] hitColliders =
                 Physics.OverlapSphere(GetEffectCenterPosition(), EFFECT_RADIUS);
 
-            HashSet<Character> alreadyHit = new HashSet<Character>();
+            _hitCache.Clear();
 
             foreach (var hit in hitColliders)
             {
@@ -225,10 +231,10 @@ namespace PeakClassMod.Handlers
                 if (other == _character)
                     continue;
 
-                if (alreadyHit.Contains(other))
+                if (_hitCache.Contains(other))
                     continue;
 
-                alreadyHit.Add(other);
+                _hitCache.Add(other);
 
                 float now = Time.time;
 
@@ -264,7 +270,7 @@ namespace PeakClassMod.Handlers
             Collider[] hitColliders =
                 Physics.OverlapSphere(GetEffectCenterPosition(), EFFECT_RADIUS);
 
-            HashSet<Character> alreadyHit = new HashSet<Character>();
+            _hitCache.Clear();
 
             foreach (var hit in hitColliders)
             {
@@ -276,10 +282,10 @@ namespace PeakClassMod.Handlers
                 if (other == _character)
                     continue;
 
-                if (alreadyHit.Contains(other))
+                if (_hitCache.Contains(other))
                     continue;
 
-                alreadyHit.Add(other);
+                _hitCache.Add(other);
 
                 float now = Time.time;
 
