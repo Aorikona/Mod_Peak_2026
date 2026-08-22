@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -29,6 +29,12 @@ namespace PeakClassMod.Utils
 				if (!_byName.ContainsKey(raw)) _byName[raw] = it;
 				if (!_byName.ContainsKey(clean)) _byName[clean] = it;
 				if (!_byName.ContainsKey(norm)) _byName[norm] = it;
+
+				// Log tous les items pour trouver le nom exact
+				if (raw.ToLower().Contains("dart") || raw.ToLower().Contains("blow") || raw.ToLower().Contains("heal") || raw.ToLower().Contains("gun") || raw.ToLower().Contains("pipe") || raw.ToLower().Contains("sarbacane"))
+				{
+					PeakClassModPlugin.Log?.LogInfo($"[ItemScan] Dart/Weapon candidate: '{raw}' (ID: {it.itemID})");
+				}
 			}
 			_lastRefreshTime = Time.time;
 		}

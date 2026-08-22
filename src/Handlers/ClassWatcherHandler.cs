@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using PeakClassMod.Utils;
 using System;
 
@@ -9,7 +9,7 @@ namespace PeakClassMod.Handlers
 		private Character _character;
 		private string _activeClass = "None";
 		private float _lastCheckTime = 0f;
-		private int _notFoundCounter = 0;
+		private float _lastBroadcastTime = 0f;
 
 		private void Start()
 		{
@@ -21,10 +21,18 @@ namespace PeakClassMod.Handlers
 		{
 			if (_character == null || !_character.IsLocal) return;
 
-			if (Time.time - _lastCheckTime < 0.5f) return;
-			_lastCheckTime = Time.time;
+			if (Time.time - _lastCheckTime > 0.5f)
+			{
+				_lastCheckTime = Time.time;
+				CheckAndApplyClass(false);
+			}
 
-			CheckAndApplyClass(false);
+			// Broadcast périodique toutes les 2s pour s'assurer que tous les clients synchronisent la taille
+			if (Time.time - _lastBroadcastTime > 2.0f && _activeClass != "None")
+			{
+				_lastBroadcastTime = Time.time;
+				GetComponent<ClassModNetwork>()?.BroadcastClass(_activeClass);
+			}
 		}
 
 		public void CheckAndApplyClass(bool force)
@@ -33,22 +41,11 @@ namespace PeakClassMod.Handlers
 
 			if (HatUtils.TryGetHatName(_character, out string hatName))
 			{
-				_notFoundCounter = 0;
 				string targetClass = DetermineClassFromHat(hatName);
-				if (force || targetClass != _activeClass)
+				if (targetClass != "None" && (force || targetClass != _activeClass))
 				{
 					_activeClass = targetClass;
 					ApplyClass(targetClass);
-				}
-			}
-			else
-			{
-				_notFoundCounter++;
-				if (_notFoundCounter >= 3 && _activeClass != "None")
-				{
-					_activeClass = "None";
-					ClassManager.DeactivateAllClasses();
-					GetComponent<ClassModNetwork>()?.BroadcastClass("None");
 				}
 			}
 		}
@@ -65,8 +62,9 @@ namespace PeakClassMod.Handlers
 			if (hatName.Contains("NinjaHeadband") || hatName.Contains("Ninja")) return "Rogue";
 			if (hatName.Contains("Bandana") || hatName.Contains("Captain")) return "General";
 			if (hatName.Contains("Astronaut")) return "Astronaut";
-			if (hatName.Contains("Midsummer") || hatName.Contains("Gobelin")) return "Gobelin";
+			if (hatName.Contains("Midsummer") || hatName.Contains("Gobelin") || hatName.Contains("Crown")) return "Gobelin";
 			if (hatName.Contains("WolfEars") || hatName.Contains("Wolf")) return "Wolf";
+			if (hatName.Contains("Chef") || hatName.Contains("Cook")) return "Cook";
 
 			return "None";
 		}
@@ -110,6 +108,7 @@ namespace PeakClassMod.Handlers
 				case "Astronaut": ClassManager.ActivateAstronautClass(); break;
 				case "Gobelin": ClassManager.ActivateGobelinClass(); break;
 				case "Wolf": ClassManager.ActivateWolfClass(); break;
+				case "Cook": ClassManager.ActivateCookClass(); break;
 				default:
 					ClassManager.DeactivateAllClasses();
 					break;

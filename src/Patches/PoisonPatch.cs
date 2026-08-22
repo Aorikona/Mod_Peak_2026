@@ -1,17 +1,26 @@
-﻿using PeakClassMod.Utils;
-using System;
-using UnityEngine;
+using PeakClassMod.Utils;
+using Peak.Afflictions;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(Peak.Afflictions.Affliction_PoisonOverTime), "OnApplied")]
-    public class PoisonPatch { 
-        static bool Prefix(Peak.Afflictions.Affliction_PoisonOverTime __instance) => __instance?.character == null || !ClassCheckUtil.IsMushroom(__instance.character); 
-    }
+	[HarmonyPatch(typeof(CharacterAfflictions), "AddAffliction")]
+	public class MushroomancerPoisonAfflictionPatch
+	{
+		static bool Prefix(CharacterAfflictions __instance, Affliction affliction)
+		{
+			if (__instance == null || __instance.character == null || affliction == null) return true;
 
+			Character ch = __instance.character;
+			if ((ch.IsLocal && ClassManager.IsMushroomancerActive()) || ClassCheckUtil.IsMushroom(ch))
+			{
+				if (affliction is Affliction_PoisonOverTime || affliction.GetAfflictionType() == Affliction.AfflictionType.PoisonOverTime || affliction.GetType().Name.Contains("Poison"))
+				{
+					PeakClassModPlugin.Log?.LogInfo("[Mushroomancer] Poison affliction blocked!");
+					return false;
+				}
+			}
+			return true;
+		}
+	}
 }

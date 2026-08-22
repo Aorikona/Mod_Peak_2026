@@ -79,7 +79,6 @@ namespace PeakClassMod
 	public static class ClassManager
 	{
 		private static readonly Dictionary<int, float> lastStaminaZeroTime = new Dictionary<int, float>();
-		private static readonly Dictionary<int, int> staminaZeroCount = new Dictionary<int, int>();
 		private static Coroutine _mushroomCoroutine;
 		private static Coroutine _greatEpeeEffectsCoroutine;
 		private static Coroutine _greatEpeeStaminaCoroutine;
@@ -149,29 +148,20 @@ namespace PeakClassMod
 
 		public static IEnumerator MushroomancerLocalStaminaWatch(Character character)
 		{
-			// Délai initial de 4s pour laisser le joueur charger son endurance à 100%
-			yield return new WaitForSeconds(4f);
-
-			bool wasAboveThreshold = true;
+			yield return new WaitForSeconds(6f);
+			bool wasAboveThreshold = false;
 
 			while (character != null && PeakClassModPlugin.mushroomancerActive && character.IsLocal)
 			{
-				bool isKnockedOut = false;
-				if (character.data != null)
-				{
-					if (character.data.passedOut || character.data.fullyPassedOut || character.data.dead)
-						isKnockedOut = true;
-				}
-
+				bool isKnockedOut = character.data != null && (character.data.passedOut || character.data.fullyPassedOut || character.data.dead);
 				float currentStam = character.data != null ? character.data.currentStamina : 1f;
 
-				if (currentStam > 0.20f)
+				if (currentStam > 0.70f)
 				{
 					wasAboveThreshold = true;
 				}
 
-				// Ne donne un champignon QUE si le joueur avait de l'endurance et vient de la vider
-				if (!isKnockedOut && wasAboveThreshold && currentStam <= 0.02f)
+				if (!isKnockedOut && wasAboveThreshold && currentStam <= 0.03f)
 				{
 					wasAboveThreshold = false;
 					TryActivateStaminaZeroMechanic(character);
@@ -183,40 +173,33 @@ namespace PeakClassMod
 
 		public static void TryActivateStaminaZeroMechanic(Character character)
 		{
-			if (character?.photonView?.Owner == null) return;
-			int actor = character.photonView.Owner.ActorNumber;
-			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < ClassBalance.MUSHROOM_STAMINA_COOLDOWN) return;
+			if (character == null) return;
+			int actor = character.photonView?.Owner != null ? character.photonView.Owner.ActorNumber : 0;
+
+			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < 2.5f) return;
 			lastStaminaZeroTime[actor] = Time.time;
 
-			if (!staminaZeroCount.ContainsKey(actor)) staminaZeroCount[actor] = 0;
-			staminaZeroCount[actor]++;
-
-			if (staminaZeroCount[actor] % 2 == 0)
-			{
-				character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MUSHROOM_CURSE_AMOUNT, false);
-			}
+			// Application garantie de la malÃ©diction Ã  chaque Ã©puisement d'endurance
+			character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MUSHROOM_CURSE_AMOUNT, false);
 
 			string randomName = ZeroStaminaFungi[UnityEngine.Random.Range(0, ZeroStaminaFungi.Length)];
 			Item fungusItem = ItemCache.Get(randomName);
 			if (fungusItem == null) return;
 			ushort id = (ushort)fungusItem.itemID;
 
-			if (character != null)
-			{
-				character.StartCoroutine(MushroomancerGiveItemDelayed(character, id));
-			}
+			character.StartCoroutine(MushroomancerGiveItemDelayed(character, id));
 		}
 
 		private static IEnumerator MushroomancerGiveItemDelayed(Character character, ushort itemId)
 		{
-			float timeout = 5f;
+			float timeout = 4f;
 			while (character != null && character.data != null && (!character.data.isGrounded || character.data.isSprinting) && timeout > 0)
 			{
 				timeout -= 0.1f;
 				yield return new WaitForSeconds(0.1f);
 			}
 
-			if (character != null && character.player != null && character.player.itemSlots != null)
+			if (character?.player != null && character.player.itemSlots != null)
 			{
 				bool hasSpaceInBaseSlots = false;
 				int maxSlotsToCheck = Mathf.Min(3, character.player.itemSlots.Length);
@@ -354,7 +337,7 @@ using PeakClassMod.Handlers;
 
 namespace PeakClassMod
 {
-	[BepInPlugin("com.peakmod.classmod", "PEAK Class Mod", "5.2.0")]
+	[BepInPlugin("com.peakmod.classmod", "PEAK Class Mod", "5.3.0")]
 	public class PeakClassModPlugin : BaseUnityPlugin
 	{
 		public static PeakClassModPlugin Instance;
@@ -386,7 +369,7 @@ namespace PeakClassMod
 			GameObject.DontDestroyOnLoad(_callbacksGO);
 			_callbacksGO.AddComponent<PeakClassModCallbacks>();
 
-			Log?.LogInfo("[ClassMod] Ready. Version 5.2.0 loaded.");
+			Log?.LogInfo("[ClassMod] Ready. Version 5.3.0 loaded.");
 		}
 
 		private void OnDestroy()
@@ -431,7 +414,7 @@ namespace PeakClassMod
 			else if (hatName.IndexOf("Midsummer", StringComparison.OrdinalIgnoreCase) >= 0 ||
 					 hatName.IndexOf("Gobelin", StringComparison.OrdinalIgnoreCase) >= 0)
 			{
-				items.Add(ClassBalance.BLOWGUN); // "HealingDart Variant"
+				items.Add("HealingDart Variant");
 				items.Add("MagicBean");
 			}
 
@@ -485,19 +468,19 @@ namespace PeakClassMod.Handlers
 using Photon.Pun;
 using Photon.Realtime;
 using System.Collections;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using PeakClassMod.Utils;
+using HarmonyLib;
 
 namespace PeakClassMod.Handlers
 {
 	public class ClassModNetwork : MonoBehaviourPun
 	{
 		private Character _character;
-		private bool _hasRequestedItems = false;
-		private static Dictionary<int, float> _hostGiveCooldown = new Dictionary<int, float>();
-		private static Dictionary<int, Character> _characterCache = new Dictionary<int, Character>();
-		public static HashSet<int> HasReceivedStartItems = new HashSet<int>();
+		private bool _hasGivenItemsForThisInstance = false;
+		private static Dictionary<int, string> _networkClasses = new Dictionary<int, string>();
 
 		private void Awake()
 		{
@@ -508,146 +491,240 @@ namespace PeakClassMod.Handlers
 
 		private void Start()
 		{
-			if (photonView != null && photonView.IsMine && !_hasRequestedItems)
+			if (photonView != null && photonView.IsMine && !_hasGivenItemsForThisInstance)
 			{
-				_hasRequestedItems = true;
-				StartCoroutine(RequestItemsRoutine());
+				StartCoroutine(GiveItemsRoutine());
 			}
 		}
 
 		private void OnDestroy()
 		{
 			if (_character?.photonView?.Owner != null)
-				_characterCache.Remove(_character.photonView.Owner.ActorNumber);
+			{
+				_networkClasses.Remove(_character.photonView.Owner.ActorNumber);
+			}
 		}
 
 		public static void ClearPlayerCache(int actorNumber)
 		{
-			_characterCache.Remove(actorNumber);
-			_hostGiveCooldown.Remove(actorNumber);
-			HasReceivedStartItems.Remove(actorNumber);
+			_networkClasses.Remove(actorNumber);
 		}
 
-		private IEnumerator RequestItemsRoutine()
+		public static string GetPlayerClass(Character ch)
 		{
-			yield return new WaitForSeconds(ClassBalance.ITEM_REQUEST_DELAY);
+			if (ch?.photonView?.Owner != null && _networkClasses.TryGetValue(ch.photonView.Owner.ActorNumber, out var cl))
+				return cl;
+			return "None";
+		}
+
+		public void BroadcastClass(string className)
+		{
+			if (photonView != null && PhotonNetwork.InRoom)
+			{
+				photonView.RPC(nameof(RPC_SyncClassActivation), RpcTarget.AllBuffered, className, PhotonNetwork.LocalPlayer.ActorNumber);
+			}
+		}
+
+		public void TriggerStartItems()
+		{
+			if (!_hasGivenItemsForThisInstance)
+			{
+				StartCoroutine(GiveItemsRoutine());
+			}
+		}
+
+		private IEnumerator GiveItemsRoutine()
+		{
+			if (_hasGivenItemsForThisInstance) yield break;
+
+			yield return new WaitForSeconds(1.0f);
 
 			if (_character == null) _character = GetComponent<Character>();
 
-			// Attend que le joueur et ses slots d'inventaire soient initialisés
-			float timeout = 6f;
+			float timeout = 10f;
 			while (timeout > 0)
 			{
 				if (_character?.player != null && _character.player.itemSlots != null && _character.player.itemSlots.Length > 0)
-				{
 					break;
-				}
 				timeout -= 0.1f;
 				yield return new WaitForSeconds(0.1f);
 			}
 
-			yield return new WaitForSeconds(0.5f);
+			yield return new WaitForSeconds(0.3f);
+
+			if (_hasGivenItemsForThisInstance) yield break;
+			_hasGivenItemsForThisInstance = true;
 
 			string myHatName = "None";
 			if (HatUtils.TryGetHatName(_character, out string d)) myHatName = d;
 
-			if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+			GiveItemsLocally(myHatName);
+		}
+
+		private void Update()
+		{
+			if (_character == null || !_character.IsLocal || _character.player == null) return;
+
+			// Touche F8 pour purger le slot 0 (tempFullSlot) en cas de besoin
+			if (Input.GetKeyDown(KeyCode.F8))
 			{
-				photonView.RPC("RPC_HostGiveItems", RpcTarget.MasterClient, myHatName);
-			}
-			else
-			{
-				// Mode Solo
-				GiveItemsLocally(myHatName);
+				if (_character.player.tempFullSlot != null && !_character.player.tempFullSlot.IsEmpty())
+				{
+					_character.player.tempFullSlot.EmptyOut();
+					PeakClassModPlugin.Log?.LogInfo("[ClassMod] Slot 0 (tempFullSlot) purgÃ© par l'utilisateur (F8).");
+				}
 			}
 		}
 
 		public void GiveItemsLocally(string hatName)
 		{
 			if (_character?.player == null) return;
-			var itemsToGive = PeakClassModPlugin.BuildStartItemsByHatName(hatName);
-			foreach (var itemName in itemsToGive)
+
+			// Nettoyage prÃ©ventif du slot 0
+			if (_character.player.tempFullSlot != null && !_character.player.tempFullSlot.IsEmpty())
 			{
-				var item = ItemCache.Get(itemName);
-				if (item != null && _character.player.HasEmptySlot((ushort)item.itemID))
-				{
-					_character.player.AddItem((ushort)item.itemID, null, out _);
-				}
+				_character.player.tempFullSlot.EmptyOut();
 			}
-		}
 
-		[PunRPC]
-		public void RPC_HostGiveItems(string clientHatName, PhotonMessageInfo info)
-		{
-			if (!PhotonNetwork.IsMasterClient) return;
-			int actorID = info.Sender.ActorNumber;
-			if (HasReceivedStartItems.Contains(actorID)) return;
-
-			if (_hostGiveCooldown.TryGetValue(actorID, out float lastTime))
-				if (Time.time - lastTime < ClassBalance.ITEM_GIVE_COOLDOWN) return;
-
-			_hostGiveCooldown[actorID] = Time.time;
-			StartCoroutine(HostGiveItemsRoutine(clientHatName, info.Sender));
-		}
-
-		private IEnumerator HostGiveItemsRoutine(string hatName, Photon.Realtime.Player requestor)
-		{
 			var itemsToGive = PeakClassModPlugin.BuildStartItemsByHatName(hatName);
-			if (itemsToGive.Count == 0) yield break;
+			if (itemsToGive == null || itemsToGive.Count == 0) return;
 
-			Character targetChar = null;
-			int actorNumber = requestor.ActorNumber;
-
-			if (_characterCache.TryGetValue(actorNumber, out Character cachedChar) && cachedChar != null)
-				targetChar = cachedChar;
-			else
+			// Compte le nombre d'exemplaires demandÃ©s par item
+			var requestedCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+			foreach (var name in itemsToGive)
 			{
-				foreach (var ch in Character.AllCharacters)
+				if (!requestedCounts.ContainsKey(name)) requestedCounts[name] = 0;
+				requestedCounts[name]++;
+			}
+
+			foreach (var kvp in requestedCounts)
+			{
+				string itemName = kvp.Key;
+				int targetCount = kvp.Value;
+
+				var item = ItemCache.Get(itemName);
+				if (item == null) continue;
+
+				ushort id = (ushort)item.itemID;
+				int currentCount = CountItemInInventory(_character, id, itemName);
+				int needed = targetCount - currentCount;
+
+				for (int i = 0; i < needed; i++)
 				{
-					if (ch?.photonView?.Owner == requestor)
+					// VÃ©rifie qu'il y a au moins un slot d'inventaire de base disponible (Slots 1, 2, 3)
+					bool hasBaseSlot = false;
+					if (_character.player.itemSlots != null)
 					{
-						targetChar = ch;
-						_characterCache[actorNumber] = ch;
-						break;
+						for (int s = 0; s < _character.player.itemSlots.Length; s++)
+						{
+							if (_character.player.itemSlots[s] != null && _character.player.itemSlots[s].IsEmpty())
+							{
+								hasBaseSlot = true;
+								break;
+							}
+						}
+					}
+
+					if (hasBaseSlot && _character.player.HasEmptySlot(id))
+					{
+						_character.player.AddItem(id, null, out _);
+						PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Given starter item '{itemName}' (ID: {id}) ({i + 1}/{needed}) to {_character.name}");
 					}
 				}
 			}
 
-			if (targetChar?.player == null) yield break;
-
-			HasReceivedStartItems.Add(actorNumber);
-
-			foreach (var itemName in itemsToGive)
+			// S'assure que le slot 0 n'a pas Ã©tÃ© rempli
+			if (_character.player.tempFullSlot != null && !_character.player.tempFullSlot.IsEmpty())
 			{
-				var item = ItemCache.Get(itemName);
-				if (item != null && targetChar.player.HasEmptySlot((ushort)item.itemID))
-				{
-					targetChar.player.AddItem((ushort)item.itemID, null, out _);
-				}
-				yield return new WaitForSeconds(0.05f);
+				_character.player.tempFullSlot.EmptyOut();
 			}
+		}
+
+		public static int CountItemInInventory(Character ch, ushort itemID, string itemName)
+		{
+			if (ch == null || ch.player == null) return 0;
+			int count = 0;
+
+			// 1. Objet actuellement tenu en main
+			if (ch.data != null && ch.data.currentItem != null)
+			{
+				if (ch.data.currentItem.itemID == itemID || ch.data.currentItem.name.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0)
+					count++;
+			}
+
+			// 2. Inspection des slots de joueur
+			if (ch.player.itemSlots != null)
+			{
+				foreach (var slot in ch.player.itemSlots)
+				{
+					if (slot != null && !slot.IsEmpty())
+					{
+						if (slot.prefab != null && (slot.prefab.itemID == itemID || slot.prefab.name.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0))
+						{
+							count++;
+							continue;
+						}
+						string pName = slot.GetPrefabName();
+						if (!string.IsNullOrEmpty(pName) && pName.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0)
+						{
+							count++;
+						}
+					}
+				}
+			}
+
+			// 3. Inspection du sac Ã  dos
+			if (ch.player.backpackSlot != null && !ch.player.backpackSlot.IsEmpty())
+			{
+				if (ch.player.backpackSlot.prefab != null && (ch.player.backpackSlot.prefab.itemID == itemID || ch.player.backpackSlot.prefab.name.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0))
+				{
+					count++;
+				}
+				else
+				{
+					string bpName = ch.player.backpackSlot.GetPrefabName();
+					if (!string.IsNullOrEmpty(bpName) && bpName.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0)
+						count++;
+				}
+			}
+
+			return count;
+		}
+
+		public static bool HasItemInInventory(Character ch, ushort itemID, string itemName)
+		{
+			return CountItemInInventory(ch, itemID, itemName) > 0;
 		}
 
 		[PunRPC]
 		public void RPC_ApplyWolfHeal(float amount)
 		{
 			if (_character == null) _character = GetComponent<Character>();
-			var afflictions = _character?.refs?.afflictions;
-			if (afflictions == null) return;
-			afflictions.SubtractStatus(CharacterAfflictions.STATUSTYPE.Injury, amount, false);
+			_character?.refs?.afflictions?.SubtractStatus(CharacterAfflictions.STATUSTYPE.Injury, amount, false);
 		}
 
 		[PunRPC]
 		public void RPC_ApplyWolfDamage(float amount)
 		{
 			if (_character == null) _character = GetComponent<Character>();
-			var afflictions = _character?.refs?.afflictions;
-			if (afflictions == null) return;
-			afflictions.AddStatus(CharacterAfflictions.STATUSTYPE.Injury, amount, false, true, true);
+			_character?.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Injury, amount, false, true, true);
 		}
 
-		[PunRPC] public void ShowMedicHealEffectRPC(int remainingHeals) { PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Medic heal: {remainingHeals}"); }
-		[PunRPC] public void RPC_SyncClassActivation(string className, int actorNumber) { PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Player {actorNumber} class: {className}"); }
+		[PunRPC]
+		public void ShowMedicHealEffectRPC(int healsRemaining)
+		{
+			if (_character == null) _character = GetComponent<Character>();
+			if (_character?.refs?.customization != null)
+			{
+				_character.refs.customization.PulseStatus(new Color(0.2f, 1f, 0.4f, 1f), 1.5f);
+			}
+		}
+
+		[PunRPC]
+		public void RPC_SyncClassActivation(string className, int actorNumber)
+		{
+			_networkClasses[actorNumber] = className;
+		}
 	}
 }
 
@@ -664,7 +741,7 @@ namespace PeakClassMod.Handlers
 		private Character _character;
 		private string _activeClass = "None";
 		private float _lastCheckTime = 0f;
-		private int _notFoundCounter = 0;
+		private float _lastBroadcastTime = 0f;
 
 		private void Start()
 		{
@@ -676,10 +753,18 @@ namespace PeakClassMod.Handlers
 		{
 			if (_character == null || !_character.IsLocal) return;
 
-			if (Time.time - _lastCheckTime < 0.5f) return;
-			_lastCheckTime = Time.time;
+			if (Time.time - _lastCheckTime > 0.5f)
+			{
+				_lastCheckTime = Time.time;
+				CheckAndApplyClass(false);
+			}
 
-			CheckAndApplyClass(false);
+			// Broadcast pÃ©riodique toutes les 2s pour s'assurer que tous les clients synchronisent la taille
+			if (Time.time - _lastBroadcastTime > 2.0f && _activeClass != "None")
+			{
+				_lastBroadcastTime = Time.time;
+				GetComponent<ClassModNetwork>()?.BroadcastClass(_activeClass);
+			}
 		}
 
 		public void CheckAndApplyClass(bool force)
@@ -688,23 +773,11 @@ namespace PeakClassMod.Handlers
 
 			if (HatUtils.TryGetHatName(_character, out string hatName))
 			{
-				_notFoundCounter = 0;
 				string targetClass = DetermineClassFromHat(hatName);
-				if (force || targetClass != _activeClass)
+				if (targetClass != "None" && (force || targetClass != _activeClass))
 				{
 					_activeClass = targetClass;
 					ApplyClass(targetClass);
-				}
-			}
-			else
-			{
-				// Anti-rebond : attend 3 échecs consécutifs avant de désactiver
-				_notFoundCounter++;
-				if (_notFoundCounter >= 3 && _activeClass != "None")
-				{
-					_activeClass = "None";
-					ClassManager.DeactivateAllClasses();
-					PeakClassModPlugin.Log?.LogInfo("[ClassMod] Chapeau retiré -> Classes désactivées.");
 				}
 			}
 		}
@@ -718,11 +791,11 @@ namespace PeakClassMod.Handlers
 			if (hatName.Contains("Crab")) return "Tech-Priest";
 			if (hatName.Contains("Mushroom")) return "Mushroomancer";
 			if (hatName.Contains("Propeller")) return "GreatEpee";
-			if (hatName.Contains("NinjaHeadband")) return "Rogue";
+			if (hatName.Contains("NinjaHeadband") || hatName.Contains("Ninja")) return "Rogue";
 			if (hatName.Contains("Bandana") || hatName.Contains("Captain")) return "General";
 			if (hatName.Contains("Astronaut")) return "Astronaut";
-			if (hatName.Contains("Midsummer")) return "Gobelin";
-			if (hatName.Contains("WolfEars")) return "Wolf";
+			if (hatName.Contains("Midsummer") || hatName.Contains("Gobelin") || hatName.Contains("Crown")) return "Gobelin";
+			if (hatName.Contains("WolfEars") || hatName.Contains("Wolf")) return "Wolf";
 
 			return "None";
 		}
@@ -730,14 +803,19 @@ namespace PeakClassMod.Handlers
 		private void ApplyClass(string className)
 		{
 			PeakClassModPlugin.Log?.LogInfo($"[ClassMod] >>> Activation de la classe : {className} <<<");
+			GetComponent<ClassModNetwork>()?.BroadcastClass(className);
 
 			switch (className)
 			{
 				case "Scout": ClassManager.ActivateScoutClass(); break;
 				case "Medic":
 					ClassManager.ActivateMedicClass();
-					float cMedic = _character.refs?.afflictions?.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Curse) ?? 0f;
-					if (cMedic < ClassBalance.MEDIC_CURSE) _character.refs?.afflictions?.SetStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MEDIC_CURSE);
+					if (_character.refs?.afflictions?.currentStatuses != null)
+					{
+						int idx = (int)CharacterAfflictions.STATUSTYPE.Curse;
+						if (_character.refs.afflictions.currentStatuses[idx] < ClassBalance.MEDIC_CURSE)
+							_character.refs.afflictions.currentStatuses[idx] = ClassBalance.MEDIC_CURSE;
+					}
 					break;
 				case "Tech-Priest": ClassManager.ActivateTechPriestClass(); break;
 				case "Mushroomancer":
@@ -751,8 +829,12 @@ namespace PeakClassMod.Handlers
 				case "Rogue": ClassManager.ActivateRogueClass(); break;
 				case "General":
 					ClassManager.ActivateGeneralClass();
-					float cGen = _character.refs?.afflictions?.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Curse) ?? 0f;
-					if (cGen < ClassBalance.GENERAL_CURSE_MIN) _character.refs?.afflictions?.SetStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.GENERAL_CURSE_MIN);
+					if (_character.refs?.afflictions?.currentStatuses != null)
+					{
+						int idx = (int)CharacterAfflictions.STATUSTYPE.Curse;
+						if (_character.refs.afflictions.currentStatuses[idx] < ClassBalance.GENERAL_CURSE_MIN)
+							_character.refs.afflictions.currentStatuses[idx] = ClassBalance.GENERAL_CURSE_MIN;
+					}
 					break;
 				case "Astronaut": ClassManager.ActivateAstronautClass(); break;
 				case "Gobelin": ClassManager.ActivateGobelinClass(); break;
@@ -762,14 +844,147 @@ namespace PeakClassMod.Handlers
 					break;
 			}
 
-			try
+			try { GUIManager.instance?.bar?.ChangeBar(); } catch { }
+		}
+	}
+}
+
+
+// ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Handlers\GobelinBlowgunHandler.cs ====================
+using UnityEngine;
+using HarmonyLib;
+using PeakClassMod.Utils;
+using PeakClassMod.Patches;
+using Zorro.Core;
+
+namespace PeakClassMod.Handlers
+{
+	public class GobelinBlowgunHandler : MonoBehaviour
+	{
+		private Character _character;
+		private bool _isCharging = false;
+		private float _chargeTimer = 0f;
+		private string _currentAnim = null;
+
+		private void Start()
+		{
+			_character = GetComponent<Character>();
+		}
+
+		private void Update()
+		{
+			if (_character == null || !_character.IsLocal) return;
+			if (!ClassManager.IsGobelinActive() && !ClassCheckUtil.IsGobelin(_character)) return;
+
+			Item currentItem = _character.data?.currentItem;
+			bool holdingBlowgun = currentItem != null && (currentItem.itemID == 70 || GobelinBlowgunEnforcer.IsBlowgun(currentItem));
+
+			if (holdingBlowgun)
 			{
-				if (GUIManager.instance?.bar != null)
+				// Verrouille l'usage infini sans bloquer le drop de slot
+				currentItem.totalUses = -1;
+				Traverse.Create(currentItem).Field("overrideUsability").SetValue(Optionable<bool>.Some(true));
+
+				// DÃ©sactive tous les composants de consommation
+				var consumes = currentItem.GetComponents<Action_Consume>();
+				foreach (var c in consumes) { if (c.enabled) c.enabled = false; }
+				var reduces = currentItem.GetComponents<Action_ReduceUses>();
+				foreach (var r in reduces) { if (r.enabled) r.enabled = false; }
+
+				// RÃ©cupÃ¨re les feedbacks d'animation et de temps de tir
+				float usingTime = currentItem.usingTimePrimary > 0f ? currentItem.usingTimePrimary : 0.8f;
+				ItemUseFeedback feedback = currentItem.GetComponent<ItemUseFeedback>();
+				string anim = feedback != null && !string.IsNullOrEmpty(feedback.useAnimation) ? feedback.useAnimation : "PlayerEat";
+
+				// A. DÃ©but de la charge du tir
+				if (_character.input != null && _character.input.usePrimaryWasPressed && !_isCharging)
 				{
-					GUIManager.instance.bar.ChangeBar();
+					_isCharging = true;
+					_chargeTimer = 0f;
+					_currentAnim = anim;
+					if (_character.refs?.animator != null && !string.IsNullOrEmpty(_currentAnim))
+					{
+						_character.refs.animator.SetBool(_currentAnim, true);
+					}
+				}
+
+				// B. Maintien de la charge
+				if (_isCharging && _character.input != null && _character.input.usePrimaryIsPressed)
+				{
+					_chargeTimer += Time.deltaTime;
+					float prog = Mathf.Clamp01(_chargeTimer / usingTime);
+					Traverse.Create(currentItem).Field("overrideProgress").SetValue(prog);
+					Traverse.Create(currentItem).Field("overrideForceProgress").SetValue(true);
+
+					if (_chargeTimer >= usingTime)
+					{
+						// Charge complÃ¨te : TIR !
+						_isCharging = false;
+						_chargeTimer = 0f;
+						Traverse.Create(currentItem).Field("overrideProgress").SetValue(0f);
+						Traverse.Create(currentItem).Field("overrideForceProgress").SetValue(false);
+
+						if (_character.refs?.animator != null && !string.IsNullOrEmpty(_currentAnim))
+						{
+							_character.refs.animator.SetBool(_currentAnim, false);
+						}
+
+						if (feedback != null && feedback.sfxUsed != null && _character.refs != null)
+						{
+							feedback.sfxUsed.Play(currentItem.transform.position, _character.refs.carryPosRef);
+						}
+
+						ShootBlowgun(currentItem);
+					}
+				}
+
+				// C. Annulation si on relÃ¢che le clic avant la fin
+				if (_isCharging && (_character.input == null || _character.input.usePrimaryWasReleased || _character.data.passedOut || _character.data.fullyPassedOut))
+				{
+					_isCharging = false;
+					_chargeTimer = 0f;
+					Traverse.Create(currentItem).Field("overrideProgress").SetValue(0f);
+					Traverse.Create(currentItem).Field("overrideForceProgress").SetValue(false);
+
+					if (_character.refs?.animator != null && !string.IsNullOrEmpty(_currentAnim))
+					{
+						_character.refs.animator.SetBool(_currentAnim, false);
+					}
 				}
 			}
-			catch { }
+			else
+			{
+				if (_isCharging)
+				{
+					_isCharging = false;
+					_chargeTimer = 0f;
+					if (_character.refs?.animator != null && !string.IsNullOrEmpty(_currentAnim))
+					{
+						_character.refs.animator.SetBool(_currentAnim, false);
+					}
+				}
+
+				// 3. Verrouille immÃ©diatement la nourriture industrielle pour le Gobelin
+				if (currentItem != null && GobelinDiet.IsPackagedFood(currentItem))
+				{
+					Traverse.Create(currentItem).Field("overrideUsability").SetValue(Optionable<bool>.Some(false));
+				}
+			}
+		}
+
+		private void ShootBlowgun(Item item)
+		{
+			var dartAction = item.GetComponent<Action_RaycastDart>() ?? item.GetComponentInChildren<Action_RaycastDart>();
+			if (dartAction != null)
+			{
+				dartAction.RunAction();
+				PeakClassModPlugin.Log?.LogInfo("[Blowgun] Fired dart successfully!");
+			}
+
+			GobelinBlowgunEnforcer.ApplyGobelinCurse(_character);
+
+			item.finishedCast = false;
+			item.isUsingPrimary = false;
 		}
 	}
 }
@@ -777,91 +992,246 @@ namespace PeakClassMod.Handlers
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Handlers\GobelinSizeHandler.cs ====================
 using UnityEngine;
-using System.Collections;
 using PeakClassMod.Utils;
 
 namespace PeakClassMod.Handlers
 {
-    public class GobelinSizeHandler : MonoBehaviour
-    {
-        private Character _character;
-        private float _lastCheckTime = 0f;
+	public class GobelinSizeHandler : MonoBehaviour
+	{
+		private Character _character;
+		private float _lastCheckTime = 0f;
 
-        private void Start()
-        {
-            _character = GetComponent<Character>();
-        }
+		private void Start()
+		{
+			_character = GetComponent<Character>();
+		}
 
-        private void Update()
-        {
-            if (Time.time - _lastCheckTime < 0.2f) return;
-            _lastCheckTime = Time.time;
+		private void Update()
+		{
+			if (_character == null) return;
 
-            if (_character == null) return;
+			if (Time.time - _lastCheckTime < 0.2f) return;
+			_lastCheckTime = Time.time;
 
-            bool shouldBeSmall = false;
+			bool shouldBeSmall = false;
 
-            if (_character.IsLocal)
-            {
-                shouldBeSmall = ClassManager.IsGobelinActive();
-            }
-            else
-            {
-                shouldBeSmall = ClassCheckUtil.IsGobelin(_character);
-            }
+			if (_character.IsLocal)
+			{
+				shouldBeSmall = ClassManager.IsGobelinActive() || ClassCheckUtil.IsGobelin(_character);
+			}
+			else
+			{
+				shouldBeSmall = ClassCheckUtil.IsGobelin(_character) || ClassModNetwork.GetPlayerClass(_character) == "Gobelin";
+			}
 
-            float currentScale = _character.transform.localScale.x;
-            float targetScale = shouldBeSmall ? ClassBalance.GOBELIN_SIZE : 1f;
+			float targetScale = shouldBeSmall ? ClassBalance.GOBELIN_SIZE : 1f;
 
-            if (Mathf.Abs(currentScale - targetScale) > 0.05f)
-            {
-                _character.transform.localScale = Vector3.one * targetScale;
-            }
-        }
-    }
+			if (Mathf.Abs(_character.transform.localScale.x - targetScale) > 0.02f)
+			{
+				_character.transform.localScale = Vector3.one * targetScale;
+
+				// Empeche de passer sous le sol lors du rÃ©trÃ©cissement
+				if (_character.IsLocal && shouldBeSmall)
+				{
+					_character.transform.position += Vector3.up * 0.35f;
+				}
+			}
+		}
+	}
 }
-
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Handlers\MedicStatHandler.cs ====================
 using PeakClassMod;
-using PeakClassMod.Handlers;
 using PeakClassMod.Utils;
 using Photon.Pun;
-using System.Collections;
-using System.Collections.Generic;
+using System;
+using System.Linq;
+using TMPro;
 using UnityEngine;
 
 namespace PeakClassMod.Handlers
 {
-    public class MedicStatHandler : MonoBehaviour
-    {
-        private Character _character; private ClassModNetwork _network; private CharacterAfflictions _afflictions; private int _healsRemaining = ClassBalance.MEDIC_MAX_HEALS; private float _lastHealTime = 0f;
-        private void Start() { 
-            _character = GetComponent<Character>(); 
-            _network = GetComponent<ClassModNetwork>(); 
-            if (_character?.refs != null) 
-                _afflictions = _character.refs.afflictions; 
-        }
-        private void Update() { 
-            if (_character == null || !_character.IsLocal) return; 
-            if (ClassManager.IsMedicActive()) { 
-                if (Input.GetKeyDown(KeyCode.H) && Time.time - _lastHealTime > ClassBalance.MEDIC_HEAL_COOLDOWN) TrySelfHeal(); 
-            } else if (_healsRemaining < ClassBalance.MEDIC_MAX_HEALS) 
-                _healsRemaining = ClassBalance.MEDIC_MAX_HEALS; 
-        }
-        private void TrySelfHeal() { 
-            if (_healsRemaining <= 0) return; 
-            if (_afflictions == null && _character?.refs != null) 
-                _afflictions = _character.refs.afflictions; 
-            if (_afflictions != null && _afflictions.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Injury) > 0f) { 
-                _healsRemaining--; 
-                _lastHealTime = Time.time; 
-                _afflictions.SubtractStatus(CharacterAfflictions.STATUSTYPE.Injury, ClassBalance.MEDIC_HEAL_AMOUNT, false); 
-                if (_network?.photonView != null) _network.photonView.RPC("ShowMedicHealEffectRPC", Photon.Pun.RpcTarget.All, _healsRemaining); 
-            } 
-        }
-    }
+	public class MedicStatHandler : MonoBehaviour
+	{
+		private Character _character;
+		private ClassModNetwork _network;
+		private CharacterAfflictions _afflictions;
+		private int _healsRemaining = ClassBalance.MEDIC_MAX_HEALS;
+		private float _lastHealTime = -10f;
+		private const float HEAL_COOLDOWN = 2.0f;
+
+		private TextMeshProUGUI _medicUIText;
+		private GameObject _uiContainer;
+
+		private void Start()
+		{
+			_character = GetComponent<Character>();
+			_network = GetComponent<ClassModNetwork>();
+			if (_character?.refs != null)
+			{
+				_afflictions = _character.refs.afflictions;
+			}
+		}
+
+		private void Update()
+		{
+			if (_character == null || !_character.IsLocal) return;
+
+			bool isMedic = ClassManager.IsMedicActive() || ClassCheckUtil.IsMedicHat(_character);
+
+			if (!isMedic)
+			{
+				if (_uiContainer != null && _uiContainer.activeSelf)
+				{
+					_uiContainer.SetActive(false);
+				}
+				if (_healsRemaining < ClassBalance.MEDIC_MAX_HEALS)
+				{
+					_healsRemaining = ClassBalance.MEDIC_MAX_HEALS;
+				}
+				return;
+			}
+
+			if (_uiContainer == null)
+			{
+				CreateUI();
+			}
+
+			if (_uiContainer != null && !_uiContainer.activeSelf)
+			{
+				_uiContainer.SetActive(true);
+			}
+
+			UpdateUI();
+
+			float timeSinceLast = Time.time - _lastHealTime;
+			if (Input.GetKeyDown(KeyCode.H) && timeSinceLast >= HEAL_COOLDOWN)
+			{
+				TrySelfHeal();
+			}
+		}
+
+		private void TrySelfHeal()
+		{
+			if (_healsRemaining <= 0) return;
+
+			if (_afflictions == null && _character?.refs != null)
+			{
+				_afflictions = _character.refs.afflictions;
+			}
+
+			if (_afflictions != null && _afflictions.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Injury) > 0f)
+			{
+				_healsRemaining--;
+				_lastHealTime = Time.time;
+				_afflictions.SubtractStatus(CharacterAfflictions.STATUSTYPE.Injury, ClassBalance.MEDIC_HEAL_AMOUNT, false);
+
+				// VFX & SFX
+				PlayLocalHealEffects();
+
+				if (_network?.photonView != null)
+				{
+					_network.photonView.RPC("ShowMedicHealEffectRPC", RpcTarget.All, _healsRemaining);
+				}
+			}
+		}
+
+		private void PlayLocalHealEffects()
+		{
+			// 1. VFX : Aura verte Ã©clatante sur le corps
+			if (_character?.refs?.customization != null)
+			{
+				_character.refs.customization.PulseStatus(new Color(0.2f, 1f, 0.4f, 1f), 1.8f);
+			}
+
+			// 2. SFX : Son natif de soin / bandage / kit de soin
+			try
+			{
+				var medkit = ItemCache.Get("FirstAidKit") ?? ItemCache.Get("Bandage");
+				var feedback = medkit?.GetComponent<ItemUseFeedback>();
+				if (feedback != null && feedback.sfxUsed != null)
+				{
+					feedback.sfxUsed.Play(_character.Center);
+				}
+				else if (_character?.refs?.afflictions != null)
+				{
+					_character.refs.afflictions.injurySmall?.Play(_character.Center);
+				}
+			}
+			catch { }
+		}
+
+		private void CreateUI()
+		{
+			try
+			{
+				GameObject parent = GameObject.Find("GAME/GUIManager/Canvas_HUD");
+				if (parent == null && GUIManager.instance != null) parent = GUIManager.instance.gameObject;
+				if (parent == null)
+				{
+					var canvas = UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None).FirstOrDefault(c => c.renderMode == RenderMode.ScreenSpaceOverlay);
+					if (canvas != null) parent = canvas.gameObject;
+				}
+
+				if (parent == null) return;
+
+				TMP_FontAsset fontAsset = null;
+				foreach (var t in UnityEngine.Object.FindObjectsByType<TextMeshProUGUI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+				{
+					if (t.font != null && t.font.name.Contains("Daruma"))
+					{
+						fontAsset = t.font;
+						break;
+					}
+				}
+
+				_uiContainer = new GameObject("MedicHealUI");
+				_uiContainer.transform.SetParent(parent.transform, false);
+
+				_medicUIText = _uiContainer.AddComponent<TextMeshProUGUI>();
+				RectTransform rect = _uiContainer.GetComponent<RectTransform>();
+				rect.anchorMin = new Vector2(0.5f, 0f);
+				rect.anchorMax = new Vector2(0.5f, 0f);
+				rect.pivot = new Vector2(0.5f, 0f);
+				rect.anchoredPosition = new Vector2(0, 85);
+				rect.sizeDelta = new Vector2(450, 50);
+
+				_medicUIText.fontSize = 24;
+				_medicUIText.alignment = TextAlignmentOptions.Center;
+				if (fontAsset != null) _medicUIText.font = fontAsset;
+			}
+			catch (Exception ex)
+			{
+				PeakClassModPlugin.Log?.LogWarning($"[MedicStatHandler] UI setup error: {ex.Message}");
+			}
+		}
+
+		private void UpdateUI()
+		{
+			if (_medicUIText == null) return;
+
+			float timeRemaining = HEAL_COOLDOWN - (Time.time - _lastHealTime);
+
+			if (_healsRemaining <= 0)
+			{
+				_medicUIText.text = "<color=#888888>[H] Heal: 0/10 <color=#FF4444>[EMPTY]</color></color>";
+			}
+			else if (timeRemaining > 0f)
+			{
+				_medicUIText.text = $"<color=#00E5FF>[H]</color> Heal: <b>{_healsRemaining}/{ClassBalance.MEDIC_MAX_HEALS}</b> <color=#FFCC00>({timeRemaining:F1}s)</color>";
+			}
+			else
+			{
+				_medicUIText.text = $"<color=#00FF66>[H]</color> Heal: <b>{_healsRemaining}/{ClassBalance.MEDIC_MAX_HEALS}</b> <color=#00FF66>[READY]</color>";
+			}
+		}
+
+		private void OnDestroy()
+		{
+			if (_uiContainer != null) Destroy(_uiContainer);
+		}
+	}
 }
 
 
@@ -923,9 +1293,11 @@ namespace PeakClassMod.Handlers
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Handlers\WolfHandler.cs ====================
 using HarmonyLib;
 using PeakClassMod.Utils;
+using Peak.Afflictions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using TMPro;
 using UnityEngine;
 
@@ -988,11 +1360,11 @@ namespace PeakClassMod.Handlers
 			if (!isWolf)
 			{
 				SetOrbVisibility(false);
+				EnsureCannibalAffliction(false);
 				if (_timeTextComponent != null) _timeTextComponent.gameObject.SetActive(false);
 				return;
 			}
 
-			// Création dynamique si pas encore instancié
 			if (_effectAnchor == null)
 			{
 				Create3DOrb();
@@ -1004,7 +1376,6 @@ namespace PeakClassMod.Handlers
 				_timeTextComponent.gameObject.SetActive(true);
 			}
 
-			// Animation de pulsation et rotation sur lui-même
 			float pulse = 1f + Mathf.Sin(Time.time * ORB_PULSE_SPEED) * ORB_PULSE_AMPLITUDE;
 			float currentWidth = LINE_BASE_WIDTH * pulse;
 
@@ -1018,6 +1389,9 @@ namespace PeakClassMod.Handlers
 			}
 
 			bool isDay = DaySegmentUtils.IsDay();
+
+			// VISION DE CANNIBALE LA NUIT POUR LE LOUP
+			EnsureCannibalAffliction(!isDay && !_character.IsGhost);
 
 			if (_character.IsGhost)
 			{
@@ -1047,9 +1421,157 @@ namespace PeakClassMod.Handlers
 				else
 				{
 					if (_timeTextComponent != null) _timeTextComponent.text = "Night";
-					DamageFriends();
+					DamageAndFeedOnFriends();
 					if (_characterClimbing != null) _characterClimbing.climbSpeed = _baseClimbSpeed;
 					if (_characterMovement != null) _characterMovement.sprintMultiplier = _baseSprintSpeed * ClassBalance.WOLF_SPRINT_SPEED_MULT;
+				}
+			}
+		}
+
+		private void EnsureCannibalAffliction(bool enable)
+		{
+			if (_character?.refs?.afflictions == null) return;
+			var list = _character.refs.afflictions.afflictionList;
+			if (list == null) return;
+
+			if (enable)
+			{
+				bool hasCannibal = false;
+				for (int i = 0; i < list.Count; i++)
+				{
+					if (list[i] != null && list[i].GetType().Name.IndexOf("Cannibal", StringComparison.OrdinalIgnoreCase) >= 0)
+					{
+						hasCannibal = true;
+						break;
+					}
+				}
+
+				if (!hasCannibal)
+				{
+					try
+					{
+						Type targetType = null;
+						foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+						{
+							targetType = asm.GetType("Peak.Afflictions.Affliction_Cannibal")
+								?? asm.GetType("Affliction_Cannibal");
+
+							if (targetType == null)
+							{
+								try
+								{
+									targetType = asm.GetTypes().FirstOrDefault(t => t != null && t.Name.IndexOf("Cannibal", StringComparison.OrdinalIgnoreCase) >= 0 && typeof(Affliction).IsAssignableFrom(t));
+								}
+								catch { }
+							}
+
+							if (targetType != null) break;
+						}
+
+						if (targetType != null)
+						{
+							Affliction inst = null;
+							var ctors = targetType.GetConstructors();
+							foreach (var c in ctors)
+							{
+								var pars = c.GetParameters();
+								if (pars.Length == 0) { inst = (Affliction)c.Invoke(null); break; }
+								else if (pars.Length == 1 && pars[0].ParameterType == typeof(float)) { inst = (Affliction)c.Invoke(new object[] { 99999f }); break; }
+								else if (pars.Length == 2 && pars[0].ParameterType == typeof(int) && pars[1].ParameterType == typeof(float)) { inst = (Affliction)c.Invoke(new object[] { 1, 99999f }); break; }
+							}
+
+							if (inst == null)
+							{
+								inst = (Affliction)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(targetType);
+							}
+
+							if (inst != null)
+							{
+								_character.refs.afflictions.AddAffliction(inst, false);
+							}
+						}
+					}
+					catch { }
+				}
+			}
+			else
+			{
+				for (int i = list.Count - 1; i >= 0; i--)
+				{
+					if (list[i] != null && list[i].GetType().Name.IndexOf("Cannibal", StringComparison.OrdinalIgnoreCase) >= 0)
+					{
+						_character.refs.afflictions.RemoveAffliction(list[i]);
+					}
+				}
+			}
+		}
+
+		public void DamageAndFeedOnFriends()
+		{
+			if (_character?.refs?.view == null || !_character.refs.view.IsMine) return;
+
+			Vector3 center = GetRealPlayerPosition();
+			Collider[] hitColliders = Physics.OverlapSphere(center, EFFECT_RADIUS);
+			HashSet<Character> alreadyHit = new HashSet<Character>();
+
+			bool fedThisTick = false;
+
+			foreach (var hit in hitColliders)
+			{
+				Character other = hit.GetComponentInParent<Character>();
+				if (other == null || other == _character || alreadyHit.Contains(other)) continue;
+
+				alreadyHit.Add(other);
+				float now = Time.time;
+				if (_lastHitTime.ContainsKey(other) && now - _lastHitTime[other] < 1f) continue;
+				_lastHitTime[other] = now;
+
+				var targetNet = other.GetComponent<ClassModNetwork>();
+				if (targetNet != null && targetNet.photonView != null && other.photonView != null && other.photonView.Owner != null)
+				{
+					targetNet.photonView.RPC("RPC_ApplyWolfDamage", other.photonView.Owner, 0.05f);
+				}
+				else
+				{
+					other.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Injury, 0.05f, false, true, true);
+				}
+
+				fedThisTick = true;
+			}
+
+			// Quand le loup blesse un allié la nuit, il se nourrit et réduit sa faim !
+			if (fedThisTick && _character.refs?.afflictions != null)
+			{
+				_character.refs.afflictions.SubtractStatus(CharacterAfflictions.STATUSTYPE.Hunger, 0.10f, false);
+			}
+		}
+
+		public void HealFriends()
+		{
+			if (_character?.refs?.view == null || !_character.refs.view.IsMine) return;
+
+			Vector3 center = GetRealPlayerPosition();
+			Collider[] hitColliders = Physics.OverlapSphere(center, EFFECT_RADIUS);
+			HashSet<Character> alreadyHit = new HashSet<Character>();
+
+			foreach (var hit in hitColliders)
+			{
+				Character other = hit.GetComponentInParent<Character>();
+				if (other == null || other == _character || alreadyHit.Contains(other)) continue;
+
+				alreadyHit.Add(other);
+				float now = Time.time;
+				if (_lastHitTime.ContainsKey(other) && now - _lastHitTime[other] < 1f) continue;
+				_lastHitTime[other] = now;
+
+				var targetNet = other.GetComponent<ClassModNetwork>();
+				if (targetNet != null && targetNet.photonView != null && other.photonView != null && other.photonView.Owner != null)
+				{
+					targetNet.photonView.RPC("RPC_ApplyWolfHeal", other.photonView.Owner, 0.025f);
+				}
+				else
+				{
+					other.refs?.afflictions?.SubtractStatus(CharacterAfflictions.STATUSTYPE.Injury, 0.025f, false);
 				}
 			}
 		}
@@ -1057,7 +1579,6 @@ namespace PeakClassMod.Handlers
 		private void LateUpdate()
 		{
 			if (_effectAnchor == null) return;
-			// Recentre l'orbe en temps réel sur la position réelle du joueur
 			_effectAnchor.transform.position = GetRealPlayerPosition();
 		}
 
@@ -1080,6 +1601,7 @@ namespace PeakClassMod.Handlers
 		private void OnDestroy()
 		{
 			if (_localInstance == this) _localInstance = null;
+			EnsureCannibalAffliction(false);
 			if (_effectAnchor != null) Destroy(_effectAnchor);
 		}
 
@@ -1096,15 +1618,12 @@ namespace PeakClassMod.Handlers
 			Shader shader = Shader.Find("Sprites/Default") ?? Shader.Find("GUI/Text Shader") ?? Shader.Find("Unlit/Color");
 			Material lineMat = new Material(shader);
 
-			// Anneau 1 : Équateur horizontal (Plan X-Z)
 			_ringEquator = CreateRing("Equator", _orbContainer.transform, lineMat);
 			DrawCircleRing(_ringEquator, EFFECT_RADIUS, Vector3.right, Vector3.forward);
 
-			// Anneau 2 : Méridien vertical 1 (Plan X-Y)
 			_ringVertical1 = CreateRing("Meridian1", _orbContainer.transform, lineMat);
 			DrawCircleRing(_ringVertical1, EFFECT_RADIUS, Vector3.right, Vector3.up);
 
-			// Anneau 3 : Méridien vertical 2 (Plan Y-Z)
 			_ringVertical2 = CreateRing("Meridian2", _orbContainer.transform, lineMat);
 			DrawCircleRing(_ringVertical2, EFFECT_RADIUS, Vector3.forward, Vector3.up);
 		}
@@ -1149,66 +1668,6 @@ namespace PeakClassMod.Handlers
 			if (_ringEquator != null) _ringEquator.enabled = visible;
 			if (_ringVertical1 != null) _ringVertical1.enabled = visible;
 			if (_ringVertical2 != null) _ringVertical2.enabled = visible;
-		}
-
-		public void HealFriends()
-		{
-			if (_character?.refs?.view == null || !_character.refs.view.IsMine) return;
-
-			Vector3 center = GetRealPlayerPosition();
-			Collider[] hitColliders = Physics.OverlapSphere(center, EFFECT_RADIUS);
-			HashSet<Character> alreadyHit = new HashSet<Character>();
-
-			foreach (var hit in hitColliders)
-			{
-				Character other = hit.GetComponentInParent<Character>();
-				if (other == null || other == _character || alreadyHit.Contains(other)) continue;
-
-				alreadyHit.Add(other);
-				float now = Time.time;
-				if (_lastHitTime.ContainsKey(other) && now - _lastHitTime[other] < 1f) continue;
-				_lastHitTime[other] = now;
-
-				var targetNet = other.GetComponent<ClassModNetwork>();
-				if (targetNet != null && targetNet.photonView != null && other.photonView != null && other.photonView.Owner != null)
-				{
-					targetNet.photonView.RPC("RPC_ApplyWolfHeal", other.photonView.Owner, 0.025f);
-				}
-				else
-				{
-					other.refs?.afflictions?.SubtractStatus(CharacterAfflictions.STATUSTYPE.Injury, 0.025f, false);
-				}
-			}
-		}
-
-		public void DamageFriends()
-		{
-			if (_character?.refs?.view == null || !_character.refs.view.IsMine) return;
-
-			Vector3 center = GetRealPlayerPosition();
-			Collider[] hitColliders = Physics.OverlapSphere(center, EFFECT_RADIUS);
-			HashSet<Character> alreadyHit = new HashSet<Character>();
-
-			foreach (var hit in hitColliders)
-			{
-				Character other = hit.GetComponentInParent<Character>();
-				if (other == null || other == _character || alreadyHit.Contains(other)) continue;
-
-				alreadyHit.Add(other);
-				float now = Time.time;
-				if (_lastHitTime.ContainsKey(other) && now - _lastHitTime[other] < 1f) continue;
-				_lastHitTime[other] = now;
-
-				var targetNet = other.GetComponent<ClassModNetwork>();
-				if (targetNet != null && targetNet.photonView != null && other.photonView != null && other.photonView.Owner != null)
-				{
-					targetNet.photonView.RPC("RPC_ApplyWolfDamage", other.photonView.Owner, 0.05f);
-				}
-				else
-				{
-					other.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Injury, 0.05f, false, true, true);
-				}
-			}
 		}
 
 		private void CreateUI()
@@ -1270,13 +1729,25 @@ namespace PeakClassMod.Patches
 		{
 			if (interactor == null) return true;
 
-			if (ClassCheckUtil.IsWolf(interactor))
+			if (ClassCheckUtil.IsWolf(interactor) || ClassManager.IsWolfActive())
 			{
-				if (interactor.IsLocal)
-				{
-					Debug.LogWarning("[ClassMod] Wolf cannot carry backpacks!");
-				}
 				return false; // Bloque l'équipement du sac
+			}
+			return true;
+		}
+	}
+
+	[HarmonyPatch(typeof(Backpack), "Interact")]
+	public static class BackpackInteractBlocker
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Backpack __instance, Character interactor)
+		{
+			if (interactor == null) return true;
+
+			if (ClassCheckUtil.IsWolf(interactor) || ClassManager.IsWolfActive())
+			{
+				return false;
 			}
 			return true;
 		}
@@ -1331,11 +1802,12 @@ namespace PeakClassMod.Patches
 			{
 				var p = PeakClassModPlugin.Instance;
 				p.EnsureComponent<ClassModNetwork>(__instance.gameObject);
-				p.EnsureComponent<ClassWatcherHandler>(__instance.gameObject); // Surveillance automatique en temps réel
+				p.EnsureComponent<ClassWatcherHandler>(__instance.gameObject);
 				p.EnsureComponent<AstronautStatHandler>(__instance.gameObject);
 				p.EnsureComponent<MedicStatHandler>(__instance.gameObject);
 				p.EnsureComponent<TechPriestWeightEnforcer>(__instance.gameObject);
 				p.EnsureComponent<GobelinSizeHandler>(__instance.gameObject);
+				p.EnsureComponent<GobelinBlowgunHandler>(__instance.gameObject);
 				p.EnsureComponent<WolfHandler>(__instance.gameObject);
 			}
 		}
@@ -1373,29 +1845,49 @@ namespace PeakClassMod.Patches
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\General_AddStatus_Patch.cs ====================
 using HarmonyLib;
 using PeakClassMod.Utils;
+using Peak.Afflictions;
 using UnityEngine;
 using System;
 
 namespace PeakClassMod.Patches
 {
-	[HarmonyPatch(typeof(CharacterAfflictions))]
+	[HarmonyPatch(typeof(CharacterAfflictions), "AddStatus")]
 	public static class General_AddStatus_Patch
 	{
-		[HarmonyPatch(nameof(CharacterAfflictions.AddStatus), new Type[] {
-			typeof(CharacterAfflictions.STATUSTYPE),
-			typeof(float),
-			typeof(bool),
-			typeof(bool),
-			typeof(bool)
-		})]
 		[HarmonyPrefix]
-		public static bool Prefix(CharacterAfflictions __instance, CharacterAfflictions.STATUSTYPE statusType, ref float amount)
+		public static bool Prefix(CharacterAfflictions __instance, CharacterAfflictions.STATUSTYPE statusType, ref float amount, ref bool __result)
 		{
 			var ch = __instance?.character;
 			if (ch == null) return true;
 
-			// 1. FAIM PAR CLASSE
-			if (ch.IsLocal && statusType == CharacterAfflictions.STATUSTYPE.Hunger)
+			bool isLocal = ch.IsLocal;
+
+			// GOBELIN : ImmunitÃ© totale Spores
+			if (statusType == CharacterAfflictions.STATUSTYPE.Spores && ((isLocal && ClassManager.IsGobelinActive()) || ClassCheckUtil.IsGobelin(ch)))
+			{
+				amount = 0f;
+				__result = false;
+				return false;
+			}
+
+			// MUSHROOMANCER : ImmunitÃ© totale Poison
+			if (statusType == CharacterAfflictions.STATUSTYPE.Poison && ((isLocal && ClassManager.IsMushroomancerActive()) || ClassCheckUtil.IsMushroom(ch)))
+			{
+				amount = 0f;
+				__result = false;
+				return false;
+			}
+
+			// TECH-PRIEST : ImmunitÃ© totale Poids
+			if (statusType == CharacterAfflictions.STATUSTYPE.Weight && ((isLocal && ClassManager.IsTechPriestActive()) || ClassCheckUtil.IsTechPriest(ch)))
+			{
+				amount = 0f;
+				__result = false;
+				return false;
+			}
+
+			// FAIM
+			if (isLocal && statusType == CharacterAfflictions.STATUSTYPE.Hunger)
 			{
 				if (ClassManager.IsAstronautActive()) amount *= ClassBalance.ASTRONAUT_HUNGER_MULT;
 				else if (ClassManager.IsScoutActive()) amount *= ClassBalance.SCOUT_HUNGER_MULT;
@@ -1404,39 +1896,129 @@ namespace PeakClassMod.Patches
 				else if (ClassManager.IsGeneralActive()) amount *= ClassBalance.GENERAL_HUNGER_MULT;
 			}
 
-			// 2. GOBELIN : Immunité Spores
-			if (ClassCheckUtil.IsGobelin(ch) && statusType == CharacterAfflictions.STATUSTYPE.Spores)
-			{
-				amount = 0f;
-				return false;
-			}
-
-			// 3. TECH-PRIEST : Immunité Poids
-			if (ClassCheckUtil.IsTechPriest(ch) && ClassManager.IsTechPriestActive())
-			{
-				if (statusType == CharacterAfflictions.STATUSTYPE.Weight) { amount = 0f; return false; }
-			}
-
-			// 4. MUSHROOMANCER : Immunité Poison
-			if (statusType == CharacterAfflictions.STATUSTYPE.Poison && ClassCheckUtil.IsMushroom(ch))
-			{
-				amount = 0f;
-				return false;
-			}
-
-			// 5. GENERAL : Maintien de la malédiction minimum (35%)
-			if (ch.IsLocal && ClassManager.IsGeneralActive() && statusType == CharacterAfflictions.STATUSTYPE.Curse && amount < 0f)
+			// GENERAL : Socle de MalÃ©diction
+			if (isLocal && ClassManager.IsGeneralActive() && statusType == CharacterAfflictions.STATUSTYPE.Curse && amount < 0f)
 			{
 				float current = __instance.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Curse);
 				if (current + amount < ClassBalance.GENERAL_CURSE_MIN)
 				{
 					float allowed = ClassBalance.GENERAL_CURSE_MIN - current;
-					if (allowed >= 0f) return false;
+					if (allowed >= 0f) { __result = false; return false; }
 					amount = allowed;
 				}
 			}
 
 			return true;
+		}
+	}
+
+	[HarmonyPatch(typeof(CharacterAfflictions), "AdjustStatus")]
+	public static class General_AdjustStatus_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(CharacterAfflictions __instance, CharacterAfflictions.STATUSTYPE statusType, ref float amount)
+		{
+			var ch = __instance?.character;
+			if (ch == null) return true;
+
+			bool isLocal = ch.IsLocal;
+
+			if (statusType == CharacterAfflictions.STATUSTYPE.Spores && ((isLocal && ClassManager.IsGobelinActive()) || ClassCheckUtil.IsGobelin(ch)))
+			{
+				amount = 0f;
+				return false;
+			}
+
+			if (statusType == CharacterAfflictions.STATUSTYPE.Poison && ((isLocal && ClassManager.IsMushroomancerActive()) || ClassCheckUtil.IsMushroom(ch)))
+			{
+				amount = 0f;
+				return false;
+			}
+
+			if (statusType == CharacterAfflictions.STATUSTYPE.Weight && ((isLocal && ClassManager.IsTechPriestActive()) || ClassCheckUtil.IsTechPriest(ch)))
+			{
+				amount = 0f;
+				return false;
+			}
+
+			return true;
+		}
+	}
+
+	[HarmonyPatch(typeof(CharacterAfflictions), "AddPoisonOverTime")]
+	public static class General_AddPoisonOverTime_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(CharacterAfflictions __instance)
+		{
+			var ch = __instance?.character;
+			if (ch == null) return true;
+
+			if ((ch.IsLocal && ClassManager.IsMushroomancerActive()) || ClassCheckUtil.IsMushroom(ch))
+			{
+				return false;
+			}
+			return true;
+		}
+	}
+
+	[HarmonyPatch(typeof(CharacterAfflictions), "Update")]
+	public static class General_Afflictions_Update_Patch
+	{
+		[HarmonyPostfix]
+		public static void Postfix(CharacterAfflictions __instance)
+		{
+			if (__instance == null || __instance.character == null) return;
+			var ch = __instance.character;
+			bool isLocal = ch.IsLocal;
+
+			// GOBELIN : Purge Spores & Confusion chaque frame
+			if ((isLocal && ClassManager.IsGobelinActive()) || ClassCheckUtil.IsGobelin(ch))
+			{
+				if (__instance.currentStatuses != null)
+				{
+					__instance.currentStatuses[(int)CharacterAfflictions.STATUSTYPE.Spores] = 0f;
+				}
+				if (__instance.afflictionList != null)
+				{
+					for (int i = __instance.afflictionList.Count - 1; i >= 0; i--)
+					{
+						var aff = __instance.afflictionList[i];
+						if (aff != null)
+						{
+							string name = aff.GetType().Name;
+							if (aff is Affliction_Chaos || aff.GetAfflictionType() == Affliction.AfflictionType.Chaos || name.Contains("Chaos") || name.Contains("Confus") || name.Contains("Spore") || name.Contains("ZombieBite"))
+							{
+								__instance.afflictionList.RemoveAt(i);
+							}
+						}
+					}
+				}
+			}
+
+			// MUSHROOMANCER : Purge Poison chaque frame
+			if ((isLocal && ClassManager.IsMushroomancerActive()) || ClassCheckUtil.IsMushroom(ch))
+			{
+				if (__instance.currentStatuses != null)
+				{
+					__instance.currentStatuses[(int)CharacterAfflictions.STATUSTYPE.Poison] = 0f;
+				}
+				if (__instance.afflictionList != null)
+				{
+					for (int i = __instance.afflictionList.Count - 1; i >= 0; i--)
+					{
+						var aff = __instance.afflictionList[i];
+						if (aff != null)
+						{
+							string name = aff.GetType().Name;
+							if (aff is Affliction_PoisonOverTime || aff.GetAfflictionType() == Affliction.AfflictionType.PoisonOverTime || name.Contains("Poison"))
+							{
+								__instance.afflictionList.RemoveAt(i);
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 }
@@ -1445,57 +2027,56 @@ namespace PeakClassMod.Patches
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\GobelinAntiFeedPatch.cs ====================
 using PeakClassMod;
 using PeakClassMod.Utils;
-using System;
-using UnityEngine;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using UnityEngine;
 
 namespace PeakClassMod.Patches
 {
-    // ==================================================
-    // EMPÊCHER DE NOURRIR LE GOBELIN (FIXED)
-    // ==================================================
-    [HarmonyPatch(typeof(Item), "StartUseSecondary")]
-    public class GobelinAntiFeedPatch
-    {
-        static bool Prefix(Item __instance)
-        {
-            if (__instance == null) return true;
+	[HarmonyPatch(typeof(Item), "StartUseSecondary")]
+	public class GobelinAntiFeedPatch
+	{
+		static bool Prefix(Item __instance)
+		{
+			if (__instance == null) return true;
 
-            // 1. Est-ce de la nourriture industrielle ?
-            if (__instance.GetComponent<Action_RestoreHunger>() != null &&
-                GobelinDiet.IsPackagedFood(__instance))
-            {
-                // 2. Accéder au système d'interaction
-                var interact = Interaction.instance;
-                if (interact == null) return true;
+			if (GobelinDiet.IsPackagedFood(__instance))
+			{
+				var interact = Interaction.instance;
+				if (interact == null) return true;
 
-                // 3. REFLECTION : On force l'accès à la variable interne 'bestCharacter'
-                // On utilise Traverse pour lire le champ "bestCharacter" dans l'instance Interaction
-                var bestCharInteractible = Traverse.Create(interact).Field("bestCharacter").GetValue<MonoBehaviour>();
+				var bestCharInteractible = Traverse.Create(interact).Field("bestCharacter").GetValue<MonoBehaviour>();
+				if (bestCharInteractible != null)
+				{
+					var targetChar = Traverse.Create(bestCharInteractible).Field("character").GetValue<Character>();
+					if (targetChar != null && ClassCheckUtil.IsGobelin(targetChar))
+					{
+						PeakClassModPlugin.Log?.LogInfo($"[Anti-Feed] Blocked feeding industrial food to Gobelin!");
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+	}
 
-                // Si on vise quelqu'un (bestCharacter n'est pas null)
-                if (bestCharInteractible != null)
-                {
-                    // 4. On récupère le "Character" à l'intérieur de CharacterInteractible
-                    // (On suppose que CharacterInteractible a un champ public 'character')
-                    // Comme on n'a pas le type CharacterInteractible, on utilise aussi Traverse par sécurité
-                    var targetChar = Traverse.Create(bestCharInteractible).Field("character").GetValue<Character>();
+	[HarmonyPatch(typeof(Character), "FeedItem")]
+	public class GobelinAntiFeed_Character_Patch
+	{
+		static bool Prefix(Character __instance, Item item)
+		{
+			if (__instance == null || item == null) return true;
 
-                    // 5. Vérification finale : Si la cible est un Gobelin
-                    if (targetChar != null && ClassCheckUtil.IsGobelin(targetChar))
-                    {
-                        // PeakClassModPlugin.Log?.LogInfo($"[Anti-Feed] Bloqué : On ne nourrit pas le Gobelin !");
-                        return false; // BLOQUE L'ACTION
-                    }
-                }
-            }
-            return true;
-        }
-    }
+			if (ClassCheckUtil.IsGobelin(__instance) || (__instance.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinDiet.IsPackagedFood(item))
+				{
+					PeakClassModPlugin.Log?.LogInfo($"[Anti-Feed] Gobelin refused to be fed {item.name}!");
+					return false;
+				}
+			}
+			return true;
+		}
+	}
 }
 
 
@@ -1504,109 +2085,126 @@ namespace PeakClassMod.Patches
 using HarmonyLib;
 using UnityEngine;
 using PeakClassMod.Utils;
+using Zorro.Core;
 
 namespace PeakClassMod.Patches
 {
-    // ==================================================
-    // PROTECTION ABSOLUE DE LA SARBACANE (CLIENT FIX & SOULBOUND V2)
-    // ==================================================
-    [HarmonyPatch(typeof(Item), "Update")]
-    public class GobelinBlowgunEnforcer
-    {
-        static void Postfix(Item __instance)
-        {
-            // Sécurité de base
-            if (__instance == null) return;
+	[HarmonyPatch(typeof(Item), "Update")]
+	public class GobelinBlowgunEnforcer
+	{
+		public static bool IsBlowgun(Item item)
+		{
+			if (item == null) return false;
+			if (item.itemID == 70) return true;
+			string n = item.name.ToLowerInvariant();
+			if (n.Contains("dart") || n.Contains("blowgun") || n.Contains("healing") || n.Contains("sarbacane")) return true;
 
-            // On ne s'intéresse qu'aux sarbacanes
-            if (__instance.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                Character holder = __instance.holderCharacter;
-                bool heldByGobelin = holder != null && ClassCheckUtil.IsGobelin(holder);
+			if (item.UIData != null && !string.IsNullOrEmpty(item.UIData.itemName))
+			{
+				string ui = item.UIData.itemName.ToLowerInvariant();
+				if (ui.Contains("dart") || ui.Contains("blowgun") || ui.Contains("healing") || ui.Contains("sarbacane")) return true;
+			}
 
-                // --- CAS 1 : TENU PAR UN GOBELIN ---
-                if (heldByGobelin)
-                {
-                    // A. Logique Infini (Seulement Local pour éviter conflits réseau)
-                    if (holder.IsLocal)
-                    {
-                        var trav = Traverse.Create(__instance);
-                        var field = trav.Field("destroyOnUse");
-                        // On force la NON-destruction
-                        if (field.FieldExists() && field.GetValue<bool>() == true)
-                        {
-                            field.SetValue(false);
-                        }
+			if (item.GetComponent<Action_RaycastDart>() != null || item.GetComponentInChildren<Action_RaycastDart>() != null) return true;
 
-                        // On force les munitions à -1 (infini)
-                        try
-                        {
-                            if (__instance.data != null && __instance.HasData(DataEntryKey.ItemUses))
-                            {
-                                var usesData = __instance.GetData<OptionableIntItemData>(DataEntryKey.ItemUses);
-                                if (usesData != null && usesData.Value != -1) usesData.Value = -1;
-                            }
-                        }
-                        catch { }
-                    }
+			return false;
+		}
 
-                    // B. Logique Soulbound (Restrictions d'inventaire)
-                    if (__instance.UIData != null)
-                    {
-                        __instance.UIData.canDrop = false;        // Touche G interdite
-                        __instance.UIData.canBackpack = false;    // Interdit de mettre dans le sac (pour donner)
-                        __instance.UIData.canThrow = false;       // Interdit de lancer
+		static void Postfix(Item __instance)
+		{
+			if (__instance == null) return;
 
+			if (IsBlowgun(__instance))
+			{
+				// 1. Forcer la disponibilitÃ© d'utilisation native
+				var trav = Traverse.Create(__instance);
+				var usField = trav.Field("overrideUsability");
+				if (usField.FieldExists()) usField.SetValue(Optionable<bool>.Some(true));
+				__instance.totalUses = -1;
 
-                        // CORRECTION CRITIQUE ICI :
-                        __instance.UIData.canPocket = true;       // DOIT ÊTRE TRUE sinon l'objet tombe quand on l'équipe !
-                    }
-                }
-                // --- CAS 2 : TENU PAR QUELQU'UN D'AUTRE (OU AU SOL) ---
-                else
-                {
-                    // Si ce n'est pas un Gobelin qui la tient, on remet tout à la normale.
-                    // C'est crucial si le Gobelin meurt et lâche son arme.
+				// 2. DÃ©sactiver et dÃ©sabonner les composants de consommation
+				var reduceUses = __instance.GetComponents<Action_ReduceUses>();
+				foreach (var ru in reduceUses)
+				{
+					if (ru != null)
+					{
+						ru.consumeOnFullyUsed = false;
+						if (ru.enabled)
+						{
+							ru.enabled = false;
+							try
+							{
+								if (__instance.OnPrimaryFinishedCast != null)
+								{
+									__instance.OnPrimaryFinishedCast = (System.Action)System.Delegate.Remove(__instance.OnPrimaryFinishedCast, new System.Action(ru.RunAction));
+								}
+							}
+							catch { }
+						}
+					}
+				}
 
-                    // 1. Réactiver les mouvements d'inventaire
-                    if (__instance.UIData != null)
-                    {
-                        __instance.UIData.canDrop = true;
-                        __instance.UIData.canBackpack = true;
-                        __instance.UIData.canThrow = true;
+				var consumes = __instance.GetComponents<Action_Consume>();
+				foreach (var c in consumes)
+				{
+					if (c != null)
+					{
+						if (c.enabled)
+						{
+							c.enabled = false;
+							try
+							{
+								if (__instance.OnPrimaryFinishedCast != null)
+								{
+									__instance.OnPrimaryFinishedCast = (System.Action)System.Delegate.Remove(__instance.OnPrimaryFinishedCast, new System.Action(c.RunAction));
+								}
+								if (__instance.OnConsumed != null)
+								{
+									__instance.OnConsumed = (System.Action)System.Delegate.Remove(__instance.OnConsumed, new System.Action(c.RunAction));
+								}
+							}
+							catch { }
+						}
+					}
+				}
 
-                        __instance.UIData.canPocket = true;
-                    }
+				// 3. DÃ©sactive destroyOnUse
+				var field = trav.Field("destroyOnUse");
+				if (field.FieldExists()) field.SetValue(false);
 
-                    // 2. RETIRER L'INFINI (Correction du bug pour les autres joueurs)
-                    // On remet la destruction active
-                    var trav = Traverse.Create(__instance);
-                    var field = trav.Field("destroyOnUse");
-                    if (field.FieldExists())
-                    {
-                        // On remet à TRUE (l'objet doit se détruire après usage pour les non-Gobelins)
-                        field.SetValue(true);
-                    }
+				// 4. Munitions infinies natives dans les donnÃ©es
+				try
+				{
+					if (__instance.data != null && __instance.HasData(DataEntryKey.ItemUses))
+					{
+						var usesData = __instance.GetData<OptionableIntItemData>(DataEntryKey.ItemUses);
+						if (usesData != null)
+						{
+							usesData.HasData = false;
+							usesData.Value = 999;
+						}
+					}
+				}
+				catch { }
+			}
+		}
 
-                    // On remet les munitions à 1 (usage unique) si elles étaient à -1
-                    try
-                    {
-                        if (__instance.data != null && __instance.HasData(DataEntryKey.ItemUses))
-                        {
-                            var usesData = __instance.GetData<OptionableIntItemData>(DataEntryKey.ItemUses);
-                            if (usesData != null && usesData.Value == -1)
-                            {
-                                usesData.Value = 1;
-                            }
-                        }
-                    }
-                    catch { }
-                }
-            }
-        }
-    }
+		public static void ApplyGobelinCurse(Character ch)
+		{
+			if (ch?.refs?.afflictions == null) return;
+
+			ch.refs.afflictions.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.GOBELIN_CURSE_PER_SHOT, false, false, false);
+
+			int curseIdx = (int)CharacterAfflictions.STATUSTYPE.Curse;
+			if (ch.refs.afflictions.currentStatuses != null && ch.refs.afflictions.currentStatuses.Length > curseIdx)
+			{
+				ch.refs.afflictions.currentStatuses[curseIdx] += ClassBalance.GOBELIN_CURSE_PER_SHOT;
+			}
+
+			try { GUIManager.instance?.bar?.ChangeBar(); } catch { }
+		}
+	}
 }
-
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\GobelinCurseOnShootPatch.cs ====================
@@ -1616,70 +2214,84 @@ using PeakClassMod.Utils;
 
 namespace PeakClassMod.Patches
 {
-    // ==================================================
-    // APPLICATION DE LA CURSE AU TIR (FIABLE)
-    // ==================================================
-    [HarmonyPatch(typeof(Item), "FinishCastPrimary")]
-    public class GobelinCurseOnShootPatch
-    {
-        static void Postfix(Item __instance)
-        {
-            // Sécurité
-            if (__instance == null || __instance.holderCharacter == null) return;
+	[HarmonyPatch(typeof(Item))]
+	public class GobelinCurseOnShootPatch
+	{
+		private static float _lastCurseShootTime = 0f;
 
-            // On ne l'applique que pour le joueur Local (pour ne pas curse les autres sur mon écran)
-            if (__instance.holderCharacter.IsLocal && ClassCheckUtil.IsGobelin(__instance.holderCharacter))
-            {
-                // Vérifier si c'est la Sarbacane
-                if (__instance.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    // Appliquer la Curse
-                    __instance.holderCharacter.refs?.afflictions?.AddStatus(
-                        CharacterAfflictions.STATUSTYPE.Curse,
-                        ClassBalance.GOBELIN_CURSE_PER_SHOT,
-                        false);
-                }
-            }
-        }
-    }
+		[HarmonyPatch("FinishCastPrimary")]
+		[HarmonyPostfix]
+		static void FinishCastPostfix(Item __instance)
+		{
+			TriggerCurse(__instance);
+		}
+
+		private static void TriggerCurse(Item __instance)
+		{
+			if (__instance == null || __instance.holderCharacter == null) return;
+
+			var ch = __instance.holderCharacter;
+
+			if (ch.IsLocal && GobelinBlowgunEnforcer.IsBlowgun(__instance))
+			{
+				if (Time.time - _lastCurseShootTime > 0.2f)
+				{
+					_lastCurseShootTime = Time.time;
+					GobelinBlowgunEnforcer.ApplyGobelinCurse(ch);
+				}
+			}
+		}
+	}
 }
-
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\GobelinFoodBlockerPrimary.cs ====================
 using PeakClassMod;
 using PeakClassMod.Utils;
-using System;
-using UnityEngine;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using UnityEngine;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(Item), "StartUsePrimary")]
-    [HarmonyPriority(Priority.High)]
-    public class GobelinFoodBlockerPrimary
-    {
-        static bool Prefix(Item __instance)
-        {
-            if (__instance == null || __instance.holderCharacter == null) return true;
+	[HarmonyPatch(typeof(Item), "StartUsePrimary")]
+	[HarmonyPriority(Priority.High)]
+	public class GobelinFoodBlockerPrimary
+	{
+		static bool Prefix(Item __instance)
+		{
+			if (__instance == null || __instance.holderCharacter == null) return true;
 
-            if (ClassCheckUtil.IsGobelin(__instance.holderCharacter))
-            {
-                // On vérifie si c'est de la nourriture ET si c'est "PackagedFood" via les tags
-                if (__instance.GetComponent<Action_RestoreHunger>() != null &&
-                    GobelinDiet.IsPackagedFood(__instance)) // Nouvelle méthode
-                {
-                    // PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Beurk ! Nourriture industrielle refusée : {__instance.name}");
-                    return false; // Bloque l'action
-                }
-            }
-            return true;
-        }
-    }
+			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter) || (__instance.holderCharacter.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinDiet.IsPackagedFood(__instance))
+				{
+					PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Refused packaged food: {__instance.name}");
+					return false; // Bloque l'action de manger
+				}
+			}
+			return true;
+		}
+	}
+
+	[HarmonyPatch(typeof(Item), "CanUsePrimary")]
+	[HarmonyPriority(Priority.High)]
+	public class GobelinFoodBlockerPrimary_CanUse
+	{
+		static bool Prefix(Item __instance, ref bool __result)
+		{
+			if (__instance == null || __instance.holderCharacter == null) return true;
+
+			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter) || (__instance.holderCharacter.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinDiet.IsPackagedFood(__instance))
+				{
+					__result = false;
+					return false; // Interdit le clic
+				}
+			}
+			return true;
+		}
+	}
 }
 
 
@@ -1687,35 +2299,49 @@ namespace PeakClassMod.Patches
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\GobelinFoodBlockerSecondary.cs ====================
 using PeakClassMod;
 using PeakClassMod.Utils;
-using System;
-using UnityEngine;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using UnityEngine;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(Item), "StartUseSecondary")]
-    [HarmonyPriority(Priority.High)]
-    public class GobelinFoodBlockerSecondary
-    {
-        static bool Prefix(Item __instance)
-        {
-            if (__instance == null || __instance.holderCharacter == null) return true;
+	[HarmonyPatch(typeof(Item), "StartUseSecondary")]
+	[HarmonyPriority(Priority.High)]
+	public class GobelinFoodBlockerSecondary
+	{
+		static bool Prefix(Item __instance)
+		{
+			if (__instance == null || __instance.holderCharacter == null) return true;
 
-            if (ClassCheckUtil.IsGobelin(__instance.holderCharacter))
-            {
-                if (__instance.GetComponent<Action_RestoreHunger>() != null &&
-                    GobelinDiet.IsPackagedFood(__instance)) // Nouvelle méthode
-                {
-                    return false; // Bloque l'action
-                }
-            }
-            return true;
-        }
-    }
+			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter) || (__instance.holderCharacter.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinDiet.IsPackagedFood(__instance))
+				{
+					return false; // Bloque l'action secondaire
+				}
+			}
+			return true;
+		}
+	}
+
+	[HarmonyPatch(typeof(Item), "CanUseSecondary")]
+	[HarmonyPriority(Priority.High)]
+	public class GobelinFoodBlockerSecondary_CanUse
+	{
+		static bool Prefix(Item __instance, ref bool __result)
+		{
+			if (__instance == null || __instance.holderCharacter == null) return true;
+
+			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter) || (__instance.holderCharacter.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinDiet.IsPackagedFood(__instance))
+				{
+					__result = false;
+					return false;
+				}
+			}
+			return true;
+		}
+	}
 }
 
 
@@ -1724,165 +2350,517 @@ namespace PeakClassMod.Patches
 using HarmonyLib;
 using UnityEngine;
 using PeakClassMod.Utils;
+using System;
+using System.Collections;
+using Zorro.Core;
 
 namespace PeakClassMod.Patches
 {
-    // ==================================================
-    // GOBELIN INFINITE ITEM FIX (CORRIGÉ)
-    // ==================================================
+	// 1. Protection suprÃªme au niveau de l'inventaire : Player.EmptySlot
+	[HarmonyPatch(typeof(Player), "EmptySlot")]
+	public static class Player_EmptySlot_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Player __instance, Optionable<byte> slot)
+		{
+			if (__instance == null || slot.IsNone) return true;
 
-    [HarmonyPatch(typeof(Item), "Consume")]
-    public class GobelinInfiniteConsumePatch
-    {
-        static bool Prefix(Item __instance)
-        {
-            // Sécurité de base
-            if (__instance == null || __instance.holderCharacter == null) return true;
+			ItemSlot itemSlot = __instance.GetItemSlot(slot.Value);
+			if (itemSlot != null && itemSlot.prefab != null)
+			{
+				if (GobelinBlowgunEnforcer.IsBlowgun(itemSlot.prefab))
+				{
+					PeakClassModPlugin.Log?.LogInfo($"[Blowgun] BLOCKED Player.EmptySlot on slot {slot.Value} for {itemSlot.prefab.name}");
+					return false; // NE VIDE JAMAIS LE SLOT DE LA SARBACANE DU GOBELIN
+				}
+			}
+			return true;
+		}
 
-            // 1. Est-ce un Gobelin ?
-            if (ClassCheckUtil.IsGobelin(__instance.holderCharacter))
-            {
-                // 2. Est-ce la Sarbacane ?
-                if (__instance.name.IndexOf(ClassBalance.BLOWGUN, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    // --- MANUELLEMENT FINIR L'ACTION ---
+		[HarmonyPostfix]
+		public static void Postfix(Player __instance, Optionable<byte> slot)
+		{
+			if (__instance == null || slot.IsNone) return;
+			Character ch = __instance.character;
+			if (ch != null && ch.IsLocal && (ClassManager.IsGobelinActive() || ClassCheckUtil.IsGobelin(ch)))
+			{
+				var dartPrefab = ItemCache.Get("HealingDart Variant") ?? ItemCache.Get("HealingDart");
+				if (dartPrefab != null && __instance.HasEmptySlot((ushort)dartPrefab.itemID))
+				{
+					__instance.AddItem((ushort)dartPrefab.itemID, null, out _);
+					ch.refs?.items?.EquipSlot(slot);
+					PeakClassModPlugin.Log?.LogInfo($"[Blowgun] Instantly restored blowgun in slot {slot.Value}!");
+				}
+			}
+		}
+	}
 
-                    // A. Mettre à jour le timer (pour dire "c'est bon, il a tiré")
-                    __instance.holderCharacter.data.lastConsumedItem = Time.time;
+	// 2. Protection rÃ©seau : Player.RPCRemoveItemFromSlot
+	[HarmonyPatch(typeof(Player), "RPCRemoveItemFromSlot")]
+	public static class Player_RPCRemoveItemFromSlot_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Player __instance, byte slotID)
+		{
+			if (__instance == null) return true;
 
-                    // B. DÉBLOQUER L'ANIMATION (C'est ça qui bloquait !)
-                    // On dit à l'animateur : "L'objet est consommé, reviens en position normale"
-                    if (__instance.holderCharacter.refs != null && __instance.holderCharacter.refs.animator != null)
-                    {
-                        __instance.holderCharacter.refs.animator.SetBool("Consumed Item", true);
-                    }
+			ItemSlot itemSlot = __instance.GetItemSlot(slotID);
+			if (itemSlot != null && itemSlot.prefab != null && GobelinBlowgunEnforcer.IsBlowgun(itemSlot.prefab))
+			{
+				PeakClassModPlugin.Log?.LogInfo($"[Blowgun] BLOCKED RPCRemoveItemFromSlot on slot {slotID}");
+				return false;
+			}
+			return true;
+		}
+	}
 
-                    return false;
-                }
-            }
+	// 3. Bloque Action_Consume.RunAction
+	[HarmonyPatch(typeof(Action_Consume), "RunAction")]
+	public static class Action_Consume_RunAction_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Action_Consume __instance)
+		{
+			if (__instance == null) return true;
+			Item item = Traverse.Create(__instance).Field("item").GetValue<Item>() ?? __instance.GetComponent<Item>() ?? __instance.GetComponentInParent<Item>();
+			if (item != null && GobelinBlowgunEnforcer.IsBlowgun(item))
+			{
+				PeakClassModPlugin.Log?.LogInfo($"[Blowgun] BLOCKED Action_Consume.RunAction on {item.name}");
+				return false;
+			}
+			return true;
+		}
+	}
 
-            return true;
-        }
-    }
+	// 4. Bloque Action_ReduceUses.RunAction
+	[HarmonyPatch(typeof(Action_ReduceUses), "RunAction")]
+	public static class Action_ReduceUses_RunAction_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Action_ReduceUses __instance)
+		{
+			if (__instance == null) return true;
+			Item item = Traverse.Create(__instance).Field("item").GetValue<Item>() ?? __instance.GetComponent<Item>() ?? __instance.GetComponentInParent<Item>();
+			if (item != null && GobelinBlowgunEnforcer.IsBlowgun(item))
+			{
+				PeakClassModPlugin.Log?.LogInfo($"[Blowgun] BLOCKED Action_ReduceUses.RunAction on {item.name}");
+				return false;
+			}
+			return true;
+		}
+	}
+
+	// 5. Bloque Action_ReduceUses.ReduceUsesRPC
+	[HarmonyPatch(typeof(Action_ReduceUses), "ReduceUsesRPC")]
+	public static class Action_ReduceUses_ReduceUsesRPC_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Action_ReduceUses __instance)
+		{
+			if (__instance == null) return true;
+			Item item = Traverse.Create(__instance).Field("item").GetValue<Item>() ?? __instance.GetComponent<Item>() ?? __instance.GetComponentInParent<Item>();
+			if (item != null && GobelinBlowgunEnforcer.IsBlowgun(item))
+			{
+				PeakClassModPlugin.Log?.LogInfo($"[Blowgun] BLOCKED Action_ReduceUses.ReduceUsesRPC on {item.name}");
+				return false;
+			}
+			return true;
+		}
+	}
+
+	// 6. Bloque la coroutine Item.ConsumeDelayed
+	[HarmonyPatch(typeof(Item), "ConsumeDelayed")]
+	public static class Item_ConsumeDelayed_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Item __instance, ref IEnumerator __result)
+		{
+			if (__instance != null && GobelinBlowgunEnforcer.IsBlowgun(__instance))
+			{
+				PeakClassModPlugin.Log?.LogInfo($"[Blowgun] BLOCKED Item.ConsumeDelayed on {__instance.name}");
+				__result = EmptyRoutine();
+				return false;
+			}
+			return true;
+		}
+
+		private static IEnumerator EmptyRoutine()
+		{
+			yield break;
+		}
+	}
+
+	// 7. Bloque la mÃ©thode Item.Consume(int)
+	[HarmonyPatch(typeof(Item), "Consume", new Type[] { typeof(int) })]
+	public static class Item_Consume_Int_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Item __instance, int consumerID)
+		{
+			if (__instance != null && GobelinBlowgunEnforcer.IsBlowgun(__instance))
+			{
+				PeakClassModPlugin.Log?.LogInfo($"[Blowgun] BLOCKED Item.Consume on {__instance.name}");
+				return false; // Bloque totalement le RPC Consume
+			}
+			return true;
+		}
+	}
+
+	// 8. Bloque la destruction de l'objet en main : CharacterItems.DestroyHeldItemRpc
+	[HarmonyPatch(typeof(CharacterItems), "DestroyHeldItemRpc")]
+	public static class CharacterItems_DestroyHeldItemRpc_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(CharacterItems __instance)
+		{
+			if (__instance == null) return true;
+			Character ch = __instance.GetComponent<Character>();
+			if (ch != null && ch.data != null && ch.data.currentItem != null)
+			{
+				if (GobelinBlowgunEnforcer.IsBlowgun(ch.data.currentItem))
+				{
+					PeakClassModPlugin.Log?.LogInfo($"[Blowgun] BLOCKED CharacterItems.DestroyHeldItemRpc for {ch.data.currentItem.name}");
+					return false;
+				}
+			}
+			return true;
+		}
+	}
+
+
+
+	// 9. Bloque le drop uniquement pour la sarbacane du Gobelin
+	[HarmonyPatch(typeof(CharacterItems), "DropItemRpc")]
+	public static class CharacterItems_DropItemRpc_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(CharacterItems __instance, byte slotID)
+		{
+			if (__instance == null) return true;
+			Character ch = __instance.GetComponent<Character>() ?? __instance.GetComponentInParent<Character>();
+			if (ch == null || ch.player == null) return true;
+
+			if (ClassCheckUtil.IsGobelin(ch) || (ch.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				ItemSlot slot = ch.player.GetItemSlot(slotID);
+				if (slot != null && slot.prefab != null && GobelinBlowgunEnforcer.IsBlowgun(slot.prefab))
+				{
+					PeakClassModPlugin.Log?.LogInfo("[Blowgun] Le Gobelin ne peut pas jeter sa sarbacane !");
+					return false;
+				}
+			}
+			return true;
+		}
+	}
+
+	// 10. Bloque le drop depuis slot uniquement pour la sarbacane du Gobelin
+	[HarmonyPatch(typeof(CharacterItems), "DropItemFromSlotRPC")]
+	public static class CharacterItems_DropItemFromSlotRPC_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(CharacterItems __instance, byte slotID)
+		{
+			if (__instance == null) return true;
+			Character ch = __instance.GetComponent<Character>() ?? __instance.GetComponentInParent<Character>();
+			if (ch == null || ch.player == null) return true;
+
+			if (ClassCheckUtil.IsGobelin(ch) || (ch.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				ItemSlot slot = ch.player.GetItemSlot(slotID);
+				if (slot != null && slot.prefab != null && GobelinBlowgunEnforcer.IsBlowgun(slot.prefab))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+	}
+
+	// 11. RÃ©initialise immÃ©diatement la sarbacane aprÃ¨s le tir pour le tir suivant
+	[HarmonyPatch(typeof(Item), "FinishCastPrimary")]
+	public static class Item_FinishCastPrimary_Patch
+	{
+		[HarmonyPostfix]
+		public static void Postfix(Item __instance)
+		{
+			if (__instance != null && GobelinBlowgunEnforcer.IsBlowgun(__instance))
+			{
+				__instance.finishedCast = false;
+				__instance.isUsingPrimary = false;
+				Traverse.Create(__instance).Property("castProgress").SetValue(0f);
+			}
+		}
+	}
+
+	// 13. Court-circuite la fonction DoUsing native quand on tient la sarbacane ou de la nourriture industrielle
+	[HarmonyPatch(typeof(CharacterItems), "DoUsing")]
+	public static class CharacterItems_DoUsing_Patch
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(CharacterItems __instance)
+		{
+			if (__instance == null) return true;
+			Character ch = __instance.GetComponent<Character>();
+			if (ch == null || ch.data == null || ch.data.currentItem == null) return true;
+
+			// A. Sarbacane gÃ©rÃ©e par GobelinBlowgunHandler
+			if (ch.data.currentItem.itemID == 70 || GobelinBlowgunEnforcer.IsBlowgun(ch.data.currentItem))
+			{
+				return false;
+			}
+
+			// B. Blocage total de la nourriture industrielle pour le Gobelin
+			if (ClassCheckUtil.IsGobelin(ch) || (ch.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinDiet.IsPackagedFood(ch.data.currentItem))
+				{
+					return false; // Impossible de consommer
+				}
+			}
+			return true;
+		}
+	}
 }
 
+
+// ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\GobelinPickupBlocker.cs ====================
+using HarmonyLib;
+using UnityEngine;
+using PeakClassMod.Utils;
+
+namespace PeakClassMod.Patches
+{
+	[HarmonyPatch(typeof(Item), "StartInteract")]
+	public static class GobelinPickupBlocker
+	{
+		[HarmonyPrefix]
+		public static bool Prefix(Item __instance, Character interactor)
+		{
+			if (__instance == null || interactor == null) return true;
+
+			if (ClassCheckUtil.IsGobelin(interactor) || (interactor.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinBlowgunEnforcer.IsBlowgun(__instance))
+				{
+					// VÃ©rifie si le Gobelin a dÃ©jÃ  une sarbacane dans les mains ou l'inventaire
+					if (HasAnyBlowgun(interactor))
+					{
+						PeakClassModPlugin.Log?.LogInfo("[Gobelin] DÃ©jÃ  une sarbacane possÃ©dÃ©e : ramassage d'une 2Ã¨me sarbacane refusÃ©.");
+						return false;
+					}
+				}
+			}
+
+			return true;
+		}
+
+		[HarmonyPatch(typeof(Item), "CanInteract")]
+		[HarmonyPostfix]
+		public static void PostfixCanInteract(Item __instance, Character character, ref bool __result)
+		{
+			if (!__result || __instance == null || character == null) return;
+
+			if (ClassCheckUtil.IsGobelin(character) || (character.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinBlowgunEnforcer.IsBlowgun(__instance) && HasAnyBlowgun(character))
+				{
+					__result = false;
+				}
+			}
+		}
+
+		private static bool HasAnyBlowgun(Character ch)
+		{
+			if (ch == null) return false;
+
+			if (ch.data != null && ch.data.currentItem != null && GobelinBlowgunEnforcer.IsBlowgun(ch.data.currentItem))
+				return true;
+
+			if (ch.player != null && ch.player.itemSlots != null)
+			{
+				foreach (var slot in ch.player.itemSlots)
+				{
+					if (slot != null && slot.prefab != null && GobelinBlowgunEnforcer.IsBlowgun(slot.prefab))
+						return true;
+				}
+			}
+
+			return false;
+		}
+	}
+}
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\GobelinSporeAfflictionPatch.cs ====================
 using PeakClassMod.Utils;
-using System;
 using Peak.Afflictions;
-using UnityEngine;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(CharacterAfflictions), "AddAffliction")]
-    public class GobelinSporeAfflictionPatch
-    {
-        static bool Prefix(CharacterAfflictions __instance, Affliction affliction)
-        {
-            if (__instance == null || __instance.character == null || affliction == null) return true;
+	[HarmonyPatch(typeof(CharacterAfflictions), "AddAffliction")]
+	public class GobelinSporeAfflictionPatch
+	{
+		static bool Prefix(CharacterAfflictions __instance, Affliction affliction)
+		{
+			if (__instance == null || __instance.character == null || affliction == null) return true;
 
-            if (ClassCheckUtil.IsGobelin(__instance.character))
-            {
-                string name = affliction.GetType().Name;
-                // Bloque la confusion et tout ce qui contient "Spore" dans le nom du script
-                if (name.Contains("Confus") || name.Contains("Spore"))
-                {
-                    return false; // Bloque l'effet
-                }
-            }
-            return true;
-        }
-    }
+			Character ch = __instance.character;
+			if ((ch.IsLocal && ClassManager.IsGobelinActive()) || ClassCheckUtil.IsGobelin(ch))
+			{
+				// 1. Bloque la Confusion (Affliction_Chaos)
+				if (affliction is Affliction_Chaos || affliction.GetAfflictionType() == Affliction.AfflictionType.Chaos)
+				{
+					PeakClassModPlugin.Log?.LogInfo("[Gobelin] Confusion (Chaos) blocked!");
+					return false;
+				}
+
+				// 2. Bloque les Spores et morsures de zombie
+				string name = affliction.GetType().Name;
+				if (name.Contains("Chaos") || name.Contains("Confus") || name.Contains("Spore") || name.Contains("ZombieBite"))
+				{
+					PeakClassModPlugin.Log?.LogInfo($"[Gobelin] Affliction {name} blocked!");
+					return false;
+				}
+			}
+			return true;
+		}
+	}
 }
 
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\PoisonPatch.cs ====================
 using PeakClassMod.Utils;
-using System;
-using UnityEngine;
+using Peak.Afflictions;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(Peak.Afflictions.Affliction_PoisonOverTime), "OnApplied")]
-    public class PoisonPatch { 
-        static bool Prefix(Peak.Afflictions.Affliction_PoisonOverTime __instance) => __instance?.character == null || !ClassCheckUtil.IsMushroom(__instance.character); 
-    }
+	[HarmonyPatch(typeof(CharacterAfflictions), "AddAffliction")]
+	public class MushroomancerPoisonAfflictionPatch
+	{
+		static bool Prefix(CharacterAfflictions __instance, Affliction affliction)
+		{
+			if (__instance == null || __instance.character == null || affliction == null) return true;
 
+			Character ch = __instance.character;
+			if ((ch.IsLocal && ClassManager.IsMushroomancerActive()) || ClassCheckUtil.IsMushroom(ch))
+			{
+				if (affliction is Affliction_PoisonOverTime || affliction.GetAfflictionType() == Affliction.AfflictionType.PoisonOverTime || affliction.GetType().Name.Contains("Poison"))
+				{
+					PeakClassModPlugin.Log?.LogInfo("[Mushroomancer] Poison affliction blocked!");
+					return false;
+				}
+			}
+			return true;
+		}
+	}
 }
 
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\RogueJumpPatch.cs ====================
 using PeakClassMod;
-using System;
+using PeakClassMod.Utils;
 using UnityEngine;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(CharacterMovement), "EvaluateGroundChecks")]
-    public class RogueJumpPatch { 
-        static void Postfix(CharacterMovement __instance) { 
-            var ch = __instance?.GetComponent<Character>(); 
-            if (ch != null && ch.IsLocal && PeakClassModPlugin.rogueActive) ch.data.jumpsRemaining = ClassBalance.ROGUE_EXTRA_JUMPS; 
-        } 
-    }
+	[HarmonyPatch(typeof(CharacterAfflictions), "UpdateExtraJumps")]
+	public static class RogueUpdateExtraJumpsPatch
+	{
+		[HarmonyPostfix]
+		public static void Postfix(CharacterAfflictions __instance)
+		{
+			if (__instance == null || __instance.character == null) return;
+			var ch = __instance.character;
+			if (ch.IsLocal && (PeakClassModPlugin.rogueActive || ClassCheckUtil.IsRogueHat(ch)))
+			{
+				__instance.totalExtraJumps = 99;
+				if (ch.data != null) ch.data.extraJumps = 99;
+			}
+		}
+	}
 
+	[HarmonyPatch(typeof(CharacterMovement), "TryToJump")]
+	public static class RogueTryToJumpPatch
+	{
+		[HarmonyPrefix]
+		public static void Prefix(CharacterMovement __instance)
+		{
+			var ch = __instance?.GetComponent<Character>() 
+				?? __instance?.GetComponentInParent<Character>() 
+				?? Character.localCharacter;
+
+			if (ch != null && ch.IsLocal && (PeakClassModPlugin.rogueActive || ClassCheckUtil.IsRogueHat(ch)))
+			{
+				if (ch.data != null && ch.data.currentStamina > 0.005f && !ch.data.passedOut && !ch.data.fullyPassedOut)
+				{
+					ch.data.extraJumps = 99;
+					ch.data.chargingJump = false;
+					if (ch.data.sinceJump < 0.1f) ch.data.sinceJump = 0.12f;
+					if (ch.refs?.afflictions != null) ch.refs.afflictions.totalExtraJumps = 99;
+				}
+			}
+		}
+	}
+
+	[HarmonyPatch(typeof(CharacterMovement), "UpdateMovement")]
+	public static class RogueUpdateMovementPatch
+	{
+		[HarmonyPrefix]
+		public static void Prefix(CharacterMovement __instance)
+		{
+			var ch = __instance?.GetComponent<Character>() 
+				?? __instance?.GetComponentInParent<Character>() 
+				?? Character.localCharacter;
+
+			if (ch != null && ch.IsLocal && (PeakClassModPlugin.rogueActive || ClassCheckUtil.IsRogueHat(ch)))
+			{
+				if (ch.data != null && ch.data.currentStamina > 0.005f && !ch.data.passedOut && !ch.data.fullyPassedOut)
+				{
+					ch.data.extraJumps = 99;
+					if (ch.refs?.afflictions != null) ch.refs.afflictions.totalExtraJumps = 99;
+				}
+			}
+		}
+	}
+
+	[HarmonyPatch(typeof(CharacterMovement), "EvaluateGroundChecks")]
+	public static class RogueGroundCheckPatch
+	{
+		[HarmonyPostfix]
+		public static void Postfix(CharacterMovement __instance)
+		{
+			var ch = __instance?.GetComponent<Character>() 
+				?? __instance?.GetComponentInParent<Character>() 
+				?? Character.localCharacter;
+
+			if (ch != null && ch.IsLocal && (PeakClassModPlugin.rogueActive || ClassCheckUtil.IsRogueHat(ch)))
+			{
+				if (ch.data != null && ch.data.currentStamina > 0.005f && !ch.data.passedOut && !ch.data.fullyPassedOut)
+				{
+					ch.data.extraJumps = 99;
+					if (ch.refs?.afflictions != null) ch.refs.afflictions.totalExtraJumps = 99;
+				}
+			}
+		}
+	}
 }
 
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\RogueJumpRPCPatch.cs ====================
-using PeakClassMod;
-using System;
-using UnityEngine;
-using Photon.Pun;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(CharacterMovement), "TryToJump")]
-    public class RogueJumpRPCPatch
-    {
-        static bool Prefix(CharacterMovement __instance)
-        {
-            var ch = __instance?.GetComponent<Character>();
-            if (ch != null && ch.IsLocal && PeakClassModPlugin.rogueActive)
-            {
-                // Remove the jumpsRemaining limit for Rogue. They just need stamina.
-                if (ch.data.currentStamina > 0.005f)
-                {
-                    // Maintain jumpsRemaining at 1 so the game allows the jump
-                    ch.data.jumpsRemaining = 1;
-                    ch.data.chargingJump = true;
-                    ch.refs?.view?.RPC("JumpRpc", RpcTarget.All, new object[] { false });
-                    return false;
-                }
-            }
-            return true;
-        }
-    }
+	// Cleaned up, JumpRpc is handled seamlessly by native CharacterMovement with extraJumps
+	public class RogueJumpRPCPatch
+	{
+	}
 }
 
 
@@ -1894,40 +2872,33 @@ using PeakClassMod.Utils;
 using System;
 using UnityEngine;
 using HarmonyLib;
-using Photon.Pun;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(RunManager), "StartRun")]
-    public class RunManager_StartRun_Patch
-    {
-        static void Postfix()
-        {
-            if (PhotonNetwork.IsMasterClient) { ClassModNetwork.HasReceivedStartItems.Clear(); }
-            PeakClassModPlugin.Instance?.StartCoroutine(AddEffectsDelayed());
-        }
-        public static IEnumerator AddEffectsDelayed()
-        {
-            yield return new WaitForSeconds(1.5f); var lc = Character.localCharacter; if (lc == null) { yield return new WaitForSeconds(1f); lc = Character.localCharacter; if (lc == null) yield break; }
-            if (ClassCheckUtil.IsMushroom(lc)) { ClassManager.ActivateMushroomancerClass(); ClassManager.StartMushroomancerWatch(lc); }
-            else if (ClassCheckUtil.IsGeneral(lc)) { ClassManager.ActivateGeneralClass(); float c = lc.refs?.afflictions?.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Curse) ?? 0f; if (c < ClassBalance.GENERAL_CURSE_MIN) lc.refs?.afflictions?.SetStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.GENERAL_CURSE_MIN); }
-            else if (ClassCheckUtil.IsGreatEpeeHat(lc)) { ClassManager.ActivateGreatEpeeClass(); ClassManager.StartGreatEpeeRoutines(lc); }
-            else if (ClassCheckUtil.IsMedicHat(lc)) { ClassManager.ActivateMedicClass(); float c = lc.refs?.afflictions?.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Curse) ?? 0f; if (c < ClassBalance.MEDIC_CURSE) lc.refs?.afflictions?.SetStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MEDIC_CURSE); }
-            else if (ClassCheckUtil.IsAstronaut(lc)) ClassManager.ActivateAstronautClass();
-            else if (ClassCheckUtil.IsTechPriest(lc)) ClassManager.ActivateTechPriestClass();
-            else if (ClassCheckUtil.IsRogueHat(lc)) ClassManager.ActivateRogueClass();
-            else if (ClassCheckUtil.IsGobelin(lc)) ClassManager.ActivateGobelinClass();
-            else if (ClassCheckUtil.IsScout(lc)) ClassManager.ActivateScoutClass();
-            else if (ClassCheckUtil.IsWolf(lc)) ClassManager.ActivateWolfClass();
-        }
-    }
-}
+	[HarmonyPatch(typeof(RunManager), "StartRun")]
+	public class RunManager_StartRun_Patch
+	{
+		static void Postfix()
+		{
+			PeakClassModPlugin.Instance?.StartCoroutine(ReApplyClassOnIsland());
+		}
 
+		private static IEnumerator ReApplyClassOnIsland()
+		{
+			yield return new WaitForSeconds(1.5f);
+			var lc = Character.localCharacter;
+			if (lc != null)
+			{
+				var watcher = lc.GetComponent<ClassWatcherHandler>();
+				if (watcher != null)
+				{
+					watcher.CheckAndApplyClass(true);
+				}
+			}
+		}
+	}
+}
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\SetHat_Patch.cs ====================
@@ -2003,42 +2974,70 @@ namespace PeakClassMod.Patches
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\TechPriestConsumablePatch1.cs ====================
 using PeakClassMod.Utils;
-using System;
-using UnityEngine;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(Item), "StartUsePrimary")][HarmonyPriority(Priority.Normal)] 
-    public class TechPriestConsumablePatch1 { 
-        static bool Prefix(Item __instance) => !TechPriestItemChecker.ShouldBlockUse(__instance); 
-    }
+	[HarmonyPatch(typeof(Item), "StartUsePrimary")]
+	[HarmonyPriority(Priority.Normal)]
+	public class TechPriestConsumablePatch1
+	{
+		static bool Prefix(Item __instance)
+		{
+			if (TechPriestItemChecker.ShouldBlockSelfUse(__instance))
+			{
+				PeakClassModPlugin.Log?.LogInfo($"[TechPriest] Self-use of {__instance.name} blocked!");
+				return false;
+			}
+			return true;
+		}
+	}
 
+	[HarmonyPatch(typeof(Item), "CanUsePrimary")]
+	[HarmonyPriority(Priority.Normal)]
+	public class TechPriestConsumablePatch1_CanUse
+	{
+		static bool Prefix(Item __instance, ref bool __result)
+		{
+			if (TechPriestItemChecker.ShouldBlockSelfUse(__instance))
+			{
+				__result = false;
+				return false;
+			}
+			return true;
+		}
+	}
 }
 
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Patches\TechPriestConsumablePatch2.cs ====================
 using PeakClassMod.Utils;
-using System;
-using UnityEngine;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(Item), "StartUseSecondary")][HarmonyPriority(Priority.Normal)] 
-    public class TechPriestConsumablePatch2 { 
-        static bool Prefix(Item __instance) => !TechPriestItemChecker.ShouldBlockUse(__instance); 
-    }
+	[HarmonyPatch(typeof(Item), "StartUseSecondary")]
+	[HarmonyPriority(Priority.Normal)]
+	public class TechPriestConsumablePatch2
+	{
+		static bool Prefix(Item __instance)
+		{
+			if (__instance == null || __instance.holderCharacter == null) return true;
+			var ch = __instance.holderCharacter;
 
+			if ((ch.IsLocal && ClassManager.IsTechPriestActive()) || ClassCheckUtil.IsTechPriest(ch))
+			{
+				// Bloque uniquement les boosters de stamina secondaire
+				var affAction = __instance.GetComponent<Action_ApplyAffliction>();
+				if (affAction != null && affAction.affliction != null && affAction.affliction.GetType().Name.Contains("FasterBoi"))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+	}
 }
 
 
@@ -2145,24 +3144,18 @@ namespace PeakClassMod.Patches
 		{
 			if (__instance?.character == null) return;
 
-			// 1. GESTION DU POIDS EN TEMPS RÉEL
+			// Poids
 			if (statusType == CharacterAfflictions.STATUSTYPE.Weight)
 			{
 				if (ClassManager.IsTechPriestActive() && ClassCheckUtil.IsTechPriest(__instance.character))
-				{
 					__result = 0f;
-				}
 				else if (ClassManager.IsScoutActive() && ClassCheckUtil.IsScout(__instance.character))
-				{
-					__result *= ClassBalance.SCOUT_WEIGHT_MULT; // -50% poids
-				}
+					__result *= ClassBalance.SCOUT_WEIGHT_MULT;
 				else if (ClassManager.IsGeneralActive() && ClassCheckUtil.IsGeneral(__instance.character))
-				{
-					__result *= ClassBalance.GENERAL_WEIGHT_MULT; // +100% poids
-				}
+					__result *= ClassBalance.GENERAL_WEIGHT_MULT;
 			}
 
-			// 2. SOCLE DE MALÉDICTION GARANTI
+			// Malédiction
 			if (statusType == CharacterAfflictions.STATUSTYPE.Curse)
 			{
 				if (ClassManager.IsGeneralActive() && ClassCheckUtil.IsGeneral(__instance.character))
@@ -2174,19 +3167,55 @@ namespace PeakClassMod.Patches
 					if (__result < ClassBalance.MEDIC_CURSE) __result = ClassBalance.MEDIC_CURSE;
 				}
 			}
+
+			// Immunités
+			if (statusType == CharacterAfflictions.STATUSTYPE.Poison && (ClassCheckUtil.IsMushroom(__instance.character) || ClassManager.IsMushroomancerActive()))
+				__result = 0f;
+
+			if (statusType == CharacterAfflictions.STATUSTYPE.Spores && (ClassCheckUtil.IsGobelin(__instance.character) || ClassManager.IsGobelinActive()))
+				__result = 0f;
 		}
 
 		[HarmonyPatch("UpdateNormalStatuses")]
 		[HarmonyPostfix]
 		public static void UpdateNormalStatusesPostfix(CharacterAfflictions __instance)
 		{
-			if (__instance?.character != null && ClassCheckUtil.IsTechPriest(__instance.character) && ClassManager.IsTechPriestActive())
+			if (__instance?.character == null || __instance.currentStatuses == null) return;
+
+			var ch = __instance.character;
+
+			// Tech-Priest : Poids = 0
+			if (ClassCheckUtil.IsTechPriest(ch) && ClassManager.IsTechPriestActive())
 			{
-				int weightIndex = (int)CharacterAfflictions.STATUSTYPE.Weight;
-				if (__instance.currentStatuses != null && __instance.currentStatuses.Length > weightIndex)
-				{
-					__instance.currentStatuses[weightIndex] = 0f;
-				}
+				__instance.currentStatuses[(int)CharacterAfflictions.STATUSTYPE.Weight] = 0f;
+			}
+
+			// Mushroomancer : Poison = 0
+			if (ClassCheckUtil.IsMushroom(ch) || ClassManager.IsMushroomancerActive())
+			{
+				__instance.currentStatuses[(int)CharacterAfflictions.STATUSTYPE.Poison] = 0f;
+			}
+
+			// Gobelin : Spores = 0
+			if (ClassCheckUtil.IsGobelin(ch) || ClassManager.IsGobelinActive())
+			{
+				__instance.currentStatuses[(int)CharacterAfflictions.STATUSTYPE.Spores] = 0f;
+			}
+
+			// Medic : Curse plancher 15%
+			if (ClassManager.IsMedicActive() && ClassCheckUtil.IsMedicHat(ch))
+			{
+				int idx = (int)CharacterAfflictions.STATUSTYPE.Curse;
+				if (__instance.currentStatuses[idx] < ClassBalance.MEDIC_CURSE)
+					__instance.currentStatuses[idx] = ClassBalance.MEDIC_CURSE;
+			}
+
+			// General : Curse plancher 35%
+			if (ClassManager.IsGeneralActive() && ClassCheckUtil.IsGeneral(ch))
+			{
+				int idx = (int)CharacterAfflictions.STATUSTYPE.Curse;
+				if (__instance.currentStatuses[idx] < ClassBalance.GENERAL_CURSE_MIN)
+					__instance.currentStatuses[idx] = ClassBalance.GENERAL_CURSE_MIN;
 			}
 		}
 	}
@@ -2194,25 +3223,22 @@ namespace PeakClassMod.Patches
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Utils\ClassCheckUtil.cs ====================
-using PeakClassMod.Utils;
-
 namespace PeakClassMod.Utils
 {
-    public static class ClassCheckUtil
-    {
-        public static bool IsGeneral(Character ch) => HatUtils.HasAnyHat(ch, "Hat_Bandana", "Hat_Captain");
-        public static bool IsTechPriest(Character ch) => HatUtils.HasHat(ch, "Hat_Crab");
-        public static bool IsMedicHat(Character ch) => HatUtils.HasAnyHat(ch, "Hat_Medic", "MedicHelmet");
-        public static bool IsMushroom(Character ch) => HatUtils.HasHat(ch, "Hat_Mushroom");
-        public static bool IsRogueHat(Character ch) => HatUtils.HasHat(ch, "Hat_NinjaHeadband");
-        public static bool IsGreatEpeeHat(Character ch) => HatUtils.HasHat(ch, "Hat_Propeller");
-        public static bool IsAstronaut(Character ch) => HatUtils.HasHat(ch, "Hat_Astronaut");
-        public static bool IsGobelin(Character ch) => HatUtils.HasAnyHat(ch, "Hat_Midsummer");
-        public static bool IsScout(Character ch) => HatUtils.HasHat(ch, "Hat_Scoutmaster");
-        public static bool IsWolf(Character ch) => HatUtils.HasHat(ch, "Hat_WolfEars");
-    }
+	public static class ClassCheckUtil
+	{
+		public static bool IsGeneral(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsGeneralActive()) || HatUtils.HasAnyHat(ch, "Hat_Bandana", "Hat_Captain", "Bandana", "Captain");
+		public static bool IsTechPriest(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsTechPriestActive()) || HatUtils.HasAnyHat(ch, "Hat_Crab", "Crab");
+		public static bool IsMedicHat(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsMedicActive()) || HatUtils.HasAnyHat(ch, "Hat_Medic", "MedicHelmet", "Medic");
+		public static bool IsMushroom(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsMushroomancerActive()) || HatUtils.HasAnyHat(ch, "Hat_Mushroom", "Mushroom");
+		public static bool IsRogueHat(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsRogueActive()) || HatUtils.HasAnyHat(ch, "Hat_NinjaHeadband", "Ninja");
+		public static bool IsGreatEpeeHat(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsGreatEpeeActive()) || HatUtils.HasAnyHat(ch, "Hat_Propeller", "Propeller");
+		public static bool IsAstronaut(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsAstronautActive()) || HatUtils.HasAnyHat(ch, "Hat_Astronaut", "Astronaut");
+		public static bool IsGobelin(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsGobelinActive()) || HatUtils.HasAnyHat(ch, "Hat_Midsummer", "Midsummer", "Gobelin", "FlowerCrown", "Crown");
+		public static bool IsScout(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsScoutActive()) || HatUtils.HasAnyHat(ch, "Hat_Scoutmaster", "Scoutmaster", "Scout");
+		public static bool IsWolf(Character ch) => (ch != null && ch.IsLocal && ClassManager.IsWolfActive()) || HatUtils.HasAnyHat(ch, "Hat_WolfEars", "WolfEars", "Wolf");
+	}
 }
-
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Utils\DaySegmentUtils.cs ====================
@@ -2234,28 +3260,120 @@ namespace PeakClassMod.Utils
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Utils\GobelinDiet.cs ====================
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace PeakClassMod.Utils
 {
-    // ==================================================
-    // GOBELIN DIET (VERSION TAGS OPTIMISÉE)
-    // ==================================================
-    public static class GobelinDiet
-    {
-        public static bool IsPackagedFood(Item item)
-        {
-            if (item == null) return false;
+	public static class GobelinDiet
+	{
+		// Whitelist explicite d'aliments naturels autorisÃ©s pour le Gobelin
+		private static readonly HashSet<string> NaturalItemNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+		{
+			"Shroomberry_Red", "Shroomberry_Yellow", "Shroomberry_Purple", "Shroomberry_Blue", "Shroomberry_Green",
+			"ShelfShroom", "BounceShroom", "CloudFungus", "HealingPuffShroom", "PoisonShroom",
+			"MagicBean", "HealingDart Variant", "HealingDart", "BalloonBunch", "RopeSpool", "ChainShooter"
+		};
 
-            // On vérifie si l'objet possède le tag "PackagedFood"
-            // C'est une opération binaire (Bitwise check) car c'est un enum [Flags]
-            bool hasTag = (item.itemTags & Item.ItemTags.PackagedFood) != 0;
+		private static readonly string[] NaturalKeywords = new[]
+		{
+			"shroom", "mushroom", "berry", "shroomberry", "insect", "bug", "raw",
+			"fish", "meat", "plant", "herb", "puff", "spore", "healingpuff", "bean", "magicbean",
+			"worm", "fly", "centipede", "beetle", "grub", "root", "seed", "fern", "flower", "cactus", "aloe", "bird", "egg"
+		};
 
-            return hasTag;
-        }
-    }
+		// Blacklist explicite de nourriture industrielle / transformÃ©e
+		private static readonly string[] PackagedKeywords = new[]
+		{
+			"packaged", "bar", "energybar", "granola", "can", "canned", "chips",
+			"cracker", "ration", "soda", "cola", "candy", "chocolate", "cookie",
+			"marshmallow", "pie", "drink", "snack", "soup", "tuna", "sardine",
+			"noodles", "mre", "bread", "energydrink", "popcorn", "crisps", "pastry",
+			"meatpie", "peanuts", "nuts", "jerky", "beef", "cheese", "sausage", "bacon",
+			"sandwich", "burger", "hotdog", "pizza", "pasta", "ramen", "cereal", "gum", "cake"
+		};
+
+		public static bool IsNaturalFood(Item item)
+		{
+			if (item == null) return false;
+
+			string rawName = (item.name ?? "").Replace("(Clone)", "").Trim().ToLowerInvariant();
+			string uiName = (item.UIData?.itemName ?? "").ToLowerInvariant();
+
+			if (NaturalItemNames.Contains(item.name) || NaturalItemNames.Contains(rawName))
+				return true;
+
+			if ((item.itemTags & Item.ItemTags.Berry) != 0 || (item.itemTags & Item.ItemTags.Mushroom) != 0 || (item.itemTags & Item.ItemTags.Bird) != 0)
+				return true;
+
+			foreach (var nat in NaturalKeywords)
+			{
+				if (rawName.Contains(nat) || uiName.Contains(nat))
+					return true;
+			}
+
+			return false;
+		}
+
+		public static bool IsFood(Item item)
+		{
+			if (item == null) return false;
+
+			if ((item.itemTags & Item.ItemTags.PackagedFood) != 0)
+				return true;
+
+			var playAnim = item.GetComponent<Action_PlayAnimation>();
+			if (playAnim != null && !string.IsNullOrEmpty(playAnim.animationName))
+			{
+				string a = playAnim.animationName.ToLowerInvariant();
+				if (a.Contains("eat") || a.Contains("drink") || a.Contains("consume")) return true;
+			}
+
+			var feedback = item.GetComponent<ItemUseFeedback>();
+			if (feedback != null && !string.IsNullOrEmpty(feedback.useAnimation))
+			{
+				string a = feedback.useAnimation.ToLowerInvariant();
+				if (a.Contains("eat") || a.Contains("drink") || a.Contains("consume")) return true;
+			}
+
+			var modStatuses = item.GetComponents<Action_ModifyStatus>();
+			foreach (var ms in modStatuses)
+			{
+				if (ms.statusType == CharacterAfflictions.STATUSTYPE.Hunger) return true;
+			}
+
+			if (item.GetComponent<Action_RestoreHunger>() != null)
+				return true;
+
+			return false;
+		}
+
+		public static bool IsPackagedFood(Item item)
+		{
+			if (item == null) return false;
+
+			// 1. Si c'est un aliment naturel, JAMAIS interdit
+			if (IsNaturalFood(item))
+				return false;
+
+			// 2. Si c'est de la nourriture consommable et pas naturelle, INTERDIT
+			if (IsFood(item))
+				return true;
+
+			// 3. Mots-clÃ©s industriels / emballÃ©s
+			string rawName = (item.name ?? "").Replace("(Clone)", "").Trim().ToLowerInvariant();
+			string uiName = (item.UIData?.itemName ?? "").ToLowerInvariant();
+
+			foreach (var kw in PackagedKeywords)
+			{
+				if (rawName.Contains(kw) || uiName.Contains(kw))
+					return true;
+			}
+
+			return false;
+		}
+	}
 }
-
 
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Utils\HatSignUtils.cs ====================
@@ -2379,13 +3497,6 @@ namespace PeakClassMod.Utils
 	{
 		private static string _lastLocalHatName = "None";
 
-		private static readonly string[] KnownHats = new[]
-		{
-			"Hat_Scoutmaster", "Hat_Medic", "MedicHelmet", "Hat_Crab",
-			"Hat_Mushroom", "Hat_Propeller", "Hat_NinjaHeadband",
-			"Hat_Bandana", "Hat_Captain", "Hat_Astronaut", "Hat_Midsummer", "Hat_WolfEars"
-		};
-
 		public static void SetLastLocalHatName(string hatName)
 		{
 			if (!string.IsNullOrEmpty(hatName) && hatName != "Unknown" && hatName != "None")
@@ -2394,27 +3505,39 @@ namespace PeakClassMod.Utils
 			}
 		}
 
+		public static string GetLastLocalHatName() => _lastLocalHatName;
+
 		public static bool TryGetHatName(Character ch, out string hatName)
 		{
 			hatName = null;
 			if (ch == null) return false;
 
-			// --- SOURCE 1 : Inspection directe des GameObjects attachés sur le personnage ---
+			// --- SOURCE 1 : Inspection des GameObjects de chapeaux actifs ---
 			try
 			{
+				if (ch.refs?.customization?.refs?.playerHats != null)
+				{
+					foreach (var h in ch.refs.customization.refs.playerHats)
+					{
+						if (h != null && h.gameObject.activeInHierarchy)
+						{
+							hatName = h.gameObject.name;
+							if (ch.IsLocal) SetLastLocalHatName(hatName);
+							return true;
+						}
+					}
+				}
+
 				var transforms = ch.GetComponentsInChildren<Transform>(true);
 				foreach (var t in transforms)
 				{
 					if (t == null || !t.gameObject.activeInHierarchy) continue;
 					string objName = t.name;
-					foreach (var known in KnownHats)
+					if (objName.StartsWith("Hat_", StringComparison.OrdinalIgnoreCase) || objName.Contains("Crown") || objName.Contains("Helmet") || objName.Contains("Bandana"))
 					{
-						if (objName.IndexOf(known, StringComparison.OrdinalIgnoreCase) >= 0)
-						{
-							hatName = known;
-							if (ch.IsLocal) SetLastLocalHatName(hatName);
-							return true;
-						}
+						hatName = objName;
+						if (ch.IsLocal) SetLastLocalHatName(hatName);
+						return true;
 					}
 				}
 			}
@@ -2442,7 +3565,7 @@ namespace PeakClassMod.Utils
 			}
 			catch { }
 
-			// --- SOURCE 3 : Mémoire locale ---
+			// --- SOURCE 3 : MÃ©moire locale persistÃ©e ---
 			if (ch.IsLocal && !string.IsNullOrEmpty(_lastLocalHatName) && _lastLocalHatName != "None")
 			{
 				hatName = _lastLocalHatName;
@@ -2527,6 +3650,12 @@ namespace PeakClassMod.Utils
 		private static Dictionary<string, Item> _byName;
 		private static float _lastRefreshTime = 0f;
 
+		private static string Normalize(string input)
+		{
+			if (string.IsNullOrEmpty(input)) return "";
+			return input.Replace(" ", "").Replace("-", "").Replace("_", "").Replace("(Clone)", "").Trim().ToLowerInvariant();
+		}
+
 		public static void Refresh()
 		{
 			_byName = new Dictionary<string, Item>(StringComparer.OrdinalIgnoreCase);
@@ -2536,9 +3665,17 @@ namespace PeakClassMod.Utils
 				if (it == null || string.IsNullOrEmpty(it.name)) continue;
 				string raw = it.name;
 				string clean = raw.Replace("(Clone)", "").Trim();
+				string norm = Normalize(raw);
 
 				if (!_byName.ContainsKey(raw)) _byName[raw] = it;
 				if (!_byName.ContainsKey(clean)) _byName[clean] = it;
+				if (!_byName.ContainsKey(norm)) _byName[norm] = it;
+
+				// Log tous les items pour trouver le nom exact
+				if (raw.ToLower().Contains("dart") || raw.ToLower().Contains("blow") || raw.ToLower().Contains("heal") || raw.ToLower().Contains("gun") || raw.ToLower().Contains("pipe") || raw.ToLower().Contains("sarbacane"))
+				{
+					PeakClassModPlugin.Log?.LogInfo($"[ItemScan] Dart/Weapon candidate: '{raw}' (ID: {it.itemID})");
+				}
 			}
 			_lastRefreshTime = Time.time;
 		}
@@ -2554,11 +3691,14 @@ namespace PeakClassMod.Utils
 
 			if (_byName.TryGetValue(name, out var item)) return item;
 
-			// Recherche floue si le nom exact a un suffixe ou préfixe
+			string searchNorm = Normalize(name);
+			if (_byName.TryGetValue(searchNorm, out item)) return item;
+
+			// Recherche floue
 			foreach (var kvp in _byName)
 			{
-				if (kvp.Key.IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0 ||
-					name.IndexOf(kvp.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+				string keyNorm = Normalize(kvp.Key);
+				if (keyNorm.Contains(searchNorm) || searchNorm.Contains(keyNorm))
 				{
 					return kvp.Value;
 				}
@@ -2572,55 +3712,80 @@ namespace PeakClassMod.Utils
 
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Utils\TechPriestBlocker.cs ====================
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using UnityEngine;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Utils
 {
-    internal static class TechPriestBlocker
-    {
-        private static readonly HashSet<string> BlockedTypeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "heal", "cure", "medicine", "restorehealth" };
-        private static readonly HashSet<string> BlockedItemNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "bandage", "firstaid", "medkit", "cure", "marshmallow" };
-        private static Dictionary<int, bool> _blockCache = new Dictionary<int, bool>();
-        public static bool ShouldBlockItem(Item item)
-        {
-            if (item == null) return false; int id = item.GetInstanceID(); if (_blockCache.TryGetValue(id, out bool cached)) return cached;
-            bool block = false;
-            if (item.GetComponent<Action_RestoreHunger>() != null || item.GetComponent<Action_GiveExtraStamina>() != null) block = true;
-            if (!block) { string n = item.name?.Replace("(Clone)", "").Trim() ?? ""; foreach (var b in BlockedItemNames) if (n.IndexOf(b, StringComparison.OrdinalIgnoreCase) >= 0) { block = true; break; } }
-            if (!block) { foreach (var c in item.GetComponents<MonoBehaviour>()) { if (c == null) continue; string t = c.GetType().Name; foreach (var b in BlockedTypeNames) if (t.IndexOf(b, StringComparison.OrdinalIgnoreCase) >= 0) { block = true; break; } if (block) break; } }
-            _blockCache[id] = block; return block;
-        }
-        public static void ClearCache() => _blockCache.Clear();
-    }
+	internal static class TechPriestBlocker
+	{
+		private static readonly string[] HealingKeywords = new[]
+		{
+			"heal", "cure", "medicine", "restorehealth", "bandage", "firstaid",
+			"medkit", "salve", "pill", "healingpuff", "cure-all", "cureall"
+		};
+
+		public static bool ShouldBlockSelfUse(Item item)
+		{
+			if (item == null) return false;
+
+			string rawName = (item.name ?? "").ToLowerInvariant();
+			string uiName = (item.UIData?.itemName ?? "").ToLowerInvariant();
+
+			// 1. Bloque les items de soin pour soi-mÃªme
+			foreach (var word in HealingKeywords)
+			{
+				if (rawName.Contains(word) || uiName.Contains(word))
+					return true;
+			}
+
+			// 2. Bloque la nourriture organique / naturelle pour soi-mÃªme
+			if (GobelinDiet.IsNaturalFood(item))
+			{
+				return true;
+			}
+
+			// 3. Bloque toute nourriture consommable directement
+			if (GobelinDiet.IsFood(item))
+			{
+				return true;
+			}
+
+			// 4. Bloque les boosts d'endurance et boissons Ã©nergisantes
+			var affAction = item.GetComponent<Action_ApplyAffliction>();
+			if (affAction != null && affAction.affliction != null)
+			{
+				string affName = affAction.affliction.GetType().Name.ToLowerInvariant();
+				if (affName.Contains("fasterboi") || affName.Contains("stamina") || affName.Contains("energy"))
+					return true;
+			}
+
+			return false;
+		}
+	}
 }
 
 
-
 // ==================== FILE: F:\ModPeak2026\PeakModMaj\Mod_Peak_2026\src\Utils\TechPriestItemChecker.cs ====================
-using PeakClassMod.Utils;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using UnityEngine;
-using System.Threading.Tasks;
 
 namespace PeakClassMod.Utils
 {
-    internal static class TechPriestItemChecker
-    {
-        public static bool ShouldBlockUse(Item item)
-        {
-            if (item == null || item.holderCharacter == null || !ClassCheckUtil.IsTechPriest(item.holderCharacter)) return false;
-            if (TechPriestBlocker.ShouldBlockItem(item)) return true;
-            var a = item.GetComponent<Action_ApplyAffliction>();
-            return a?.affliction != null && a.affliction.GetType().Name.Contains("FasterBoi");
-        }
-    }
+	internal static class TechPriestItemChecker
+	{
+		public static bool ShouldBlockSelfUse(Item item)
+		{
+			if (item == null || item.holderCharacter == null) return false;
+			var ch = item.holderCharacter;
+
+			if ((ch.IsLocal && ClassManager.IsTechPriestActive()) || ClassCheckUtil.IsTechPriest(ch))
+			{
+				return TechPriestBlocker.ShouldBlockSelfUse(item);
+			}
+
+			return false;
+		}
+	}
 }
 
 

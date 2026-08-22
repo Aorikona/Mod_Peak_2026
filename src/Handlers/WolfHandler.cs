@@ -72,7 +72,6 @@ namespace PeakClassMod.Handlers
 				return;
 			}
 
-			// Création dynamique si pas encore instancié
 			if (_effectAnchor == null)
 			{
 				Create3DOrb();
@@ -84,7 +83,6 @@ namespace PeakClassMod.Handlers
 				_timeTextComponent.gameObject.SetActive(true);
 			}
 
-			// Animation de pulsation et rotation sur lui-même
 			float pulse = 1f + Mathf.Sin(Time.time * ORB_PULSE_SPEED) * ORB_PULSE_AMPLITUDE;
 			float currentWidth = LINE_BASE_WIDTH * pulse;
 
@@ -130,7 +128,7 @@ namespace PeakClassMod.Handlers
 				else
 				{
 					if (_timeTextComponent != null) _timeTextComponent.text = "Night";
-					DamageFriends();
+					DamageAndFeedOnFriends();
 					if (_characterClimbing != null) _characterClimbing.climbSpeed = _baseClimbSpeed;
 					if (_characterMovement != null) _characterMovement.sprintMultiplier = _baseSprintSpeed * ClassBalance.WOLF_SPRINT_SPEED_MULT;
 				}
@@ -179,8 +177,25 @@ namespace PeakClassMod.Handlers
 
 						if (targetType != null)
 						{
-							var inst = (Affliction)Activator.CreateInstance(targetType);
-							_character.refs.afflictions.AddAffliction(inst, false);
+							Affliction inst = null;
+							var ctors = targetType.GetConstructors();
+							foreach (var c in ctors)
+							{
+								var pars = c.GetParameters();
+								if (pars.Length == 0) { inst = (Affliction)c.Invoke(null); break; }
+								else if (pars.Length == 1 && pars[0].ParameterType == typeof(float)) { inst = (Affliction)c.Invoke(new object[] { 99999f }); break; }
+								else if (pars.Length == 2 && pars[0].ParameterType == typeof(int) && pars[1].ParameterType == typeof(float)) { inst = (Affliction)c.Invoke(new object[] { 1, 99999f }); break; }
+							}
+
+							if (inst == null)
+							{
+								inst = (Affliction)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(targetType);
+							}
+
+							if (inst != null)
+							{
+								_character.refs.afflictions.AddAffliction(inst, false);
+							}
 						}
 					}
 					catch { }
@@ -194,6 +209,76 @@ namespace PeakClassMod.Handlers
 					{
 						_character.refs.afflictions.RemoveAffliction(list[i]);
 					}
+				}
+			}
+		}
+
+		public void DamageAndFeedOnFriends()
+		{
+			if (_character?.refs?.view == null || !_character.refs.view.IsMine) return;
+
+			Vector3 center = GetRealPlayerPosition();
+			Collider[] hitColliders = Physics.OverlapSphere(center, EFFECT_RADIUS);
+			HashSet<Character> alreadyHit = new HashSet<Character>();
+
+			bool fedThisTick = false;
+
+			foreach (var hit in hitColliders)
+			{
+				Character other = hit.GetComponentInParent<Character>();
+				if (other == null || other == _character || alreadyHit.Contains(other)) continue;
+
+				alreadyHit.Add(other);
+				float now = Time.time;
+				if (_lastHitTime.ContainsKey(other) && now - _lastHitTime[other] < 1f) continue;
+				_lastHitTime[other] = now;
+
+				var targetNet = other.GetComponent<ClassModNetwork>();
+				if (targetNet != null && targetNet.photonView != null && other.photonView != null && other.photonView.Owner != null)
+				{
+					targetNet.photonView.RPC("RPC_ApplyWolfDamage", other.photonView.Owner, 0.05f);
+				}
+				else
+				{
+					other.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Injury, 0.05f, false, true, true);
+				}
+
+				fedThisTick = true;
+			}
+
+			// Quand le loup blesse un allié la nuit, il se nourrit et réduit sa faim !
+			if (fedThisTick && _character.refs?.afflictions != null)
+			{
+				_character.refs.afflictions.SubtractStatus(CharacterAfflictions.STATUSTYPE.Hunger, 0.10f, false);
+			}
+		}
+
+		public void HealFriends()
+		{
+			if (_character?.refs?.view == null || !_character.refs.view.IsMine) return;
+
+			Vector3 center = GetRealPlayerPosition();
+			Collider[] hitColliders = Physics.OverlapSphere(center, EFFECT_RADIUS);
+			HashSet<Character> alreadyHit = new HashSet<Character>();
+
+			foreach (var hit in hitColliders)
+			{
+				Character other = hit.GetComponentInParent<Character>();
+				if (other == null || other == _character || alreadyHit.Contains(other)) continue;
+
+				alreadyHit.Add(other);
+				float now = Time.time;
+				if (_lastHitTime.ContainsKey(other) && now - _lastHitTime[other] < 1f) continue;
+				_lastHitTime[other] = now;
+
+				var targetNet = other.GetComponent<ClassModNetwork>();
+				if (targetNet != null && targetNet.photonView != null && other.photonView != null && other.photonView.Owner != null)
+				{
+					targetNet.photonView.RPC("RPC_ApplyWolfHeal", other.photonView.Owner, 0.025f);
+				}
+				else
+				{
+					other.refs?.afflictions?.SubtractStatus(CharacterAfflictions.STATUSTYPE.Injury, 0.025f, false);
 				}
 			}
 		}
@@ -240,15 +325,12 @@ namespace PeakClassMod.Handlers
 			Shader shader = Shader.Find("Sprites/Default") ?? Shader.Find("GUI/Text Shader") ?? Shader.Find("Unlit/Color");
 			Material lineMat = new Material(shader);
 
-			// Anneau 1 : Équateur horizontal (Plan X-Z)
 			_ringEquator = CreateRing("Equator", _orbContainer.transform, lineMat);
 			DrawCircleRing(_ringEquator, EFFECT_RADIUS, Vector3.right, Vector3.forward);
 
-			// Anneau 2 : Méridien vertical 1 (Plan X-Y)
 			_ringVertical1 = CreateRing("Meridian1", _orbContainer.transform, lineMat);
 			DrawCircleRing(_ringVertical1, EFFECT_RADIUS, Vector3.right, Vector3.up);
 
-			// Anneau 3 : Méridien vertical 2 (Plan Y-Z)
 			_ringVertical2 = CreateRing("Meridian2", _orbContainer.transform, lineMat);
 			DrawCircleRing(_ringVertical2, EFFECT_RADIUS, Vector3.forward, Vector3.up);
 		}
@@ -293,66 +375,6 @@ namespace PeakClassMod.Handlers
 			if (_ringEquator != null) _ringEquator.enabled = visible;
 			if (_ringVertical1 != null) _ringVertical1.enabled = visible;
 			if (_ringVertical2 != null) _ringVertical2.enabled = visible;
-		}
-
-		public void HealFriends()
-		{
-			if (_character?.refs?.view == null || !_character.refs.view.IsMine) return;
-
-			Vector3 center = GetRealPlayerPosition();
-			Collider[] hitColliders = Physics.OverlapSphere(center, EFFECT_RADIUS);
-			HashSet<Character> alreadyHit = new HashSet<Character>();
-
-			foreach (var hit in hitColliders)
-			{
-				Character other = hit.GetComponentInParent<Character>();
-				if (other == null || other == _character || alreadyHit.Contains(other)) continue;
-
-				alreadyHit.Add(other);
-				float now = Time.time;
-				if (_lastHitTime.ContainsKey(other) && now - _lastHitTime[other] < 1f) continue;
-				_lastHitTime[other] = now;
-
-				var targetNet = other.GetComponent<ClassModNetwork>();
-				if (targetNet != null && targetNet.photonView != null && other.photonView != null && other.photonView.Owner != null)
-				{
-					targetNet.photonView.RPC("RPC_ApplyWolfHeal", other.photonView.Owner, 0.025f);
-				}
-				else
-				{
-					other.refs?.afflictions?.SubtractStatus(CharacterAfflictions.STATUSTYPE.Injury, 0.025f, false);
-				}
-			}
-		}
-
-		public void DamageFriends()
-		{
-			if (_character?.refs?.view == null || !_character.refs.view.IsMine) return;
-
-			Vector3 center = GetRealPlayerPosition();
-			Collider[] hitColliders = Physics.OverlapSphere(center, EFFECT_RADIUS);
-			HashSet<Character> alreadyHit = new HashSet<Character>();
-
-			foreach (var hit in hitColliders)
-			{
-				Character other = hit.GetComponentInParent<Character>();
-				if (other == null || other == _character || alreadyHit.Contains(other)) continue;
-
-				alreadyHit.Add(other);
-				float now = Time.time;
-				if (_lastHitTime.ContainsKey(other) && now - _lastHitTime[other] < 1f) continue;
-				_lastHitTime[other] = now;
-
-				var targetNet = other.GetComponent<ClassModNetwork>();
-				if (targetNet != null && targetNet.photonView != null && other.photonView != null && other.photonView.Owner != null)
-				{
-					targetNet.photonView.RPC("RPC_ApplyWolfDamage", other.photonView.Owner, 0.05f);
-				}
-				else
-				{
-					other.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Injury, 0.05f, false, true, true);
-				}
-			}
 		}
 
 		private void CreateUI()

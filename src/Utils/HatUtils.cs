@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -11,13 +11,6 @@ namespace PeakClassMod.Utils
 	{
 		private static string _lastLocalHatName = "None";
 
-		private static readonly string[] KnownHats = new[]
-		{
-			"Hat_Scoutmaster", "Hat_Medic", "MedicHelmet", "Hat_Crab",
-			"Hat_Mushroom", "Hat_Propeller", "Hat_NinjaHeadband",
-			"Hat_Bandana", "Hat_Captain", "Hat_Astronaut", "Hat_Midsummer", "Hat_WolfEars"
-		};
-
 		public static void SetLastLocalHatName(string hatName)
 		{
 			if (!string.IsNullOrEmpty(hatName) && hatName != "Unknown" && hatName != "None")
@@ -26,27 +19,39 @@ namespace PeakClassMod.Utils
 			}
 		}
 
+		public static string GetLastLocalHatName() => _lastLocalHatName;
+
 		public static bool TryGetHatName(Character ch, out string hatName)
 		{
 			hatName = null;
 			if (ch == null) return false;
 
-			// --- SOURCE 1 : Inspection directe des GameObjects attachés sur le personnage ---
+			// --- SOURCE 1 : Inspection des GameObjects de chapeaux actifs ---
 			try
 			{
+				if (ch.refs?.customization?.refs?.playerHats != null)
+				{
+					foreach (var h in ch.refs.customization.refs.playerHats)
+					{
+						if (h != null && h.gameObject.activeInHierarchy)
+						{
+							hatName = h.gameObject.name;
+							if (ch.IsLocal) SetLastLocalHatName(hatName);
+							return true;
+						}
+					}
+				}
+
 				var transforms = ch.GetComponentsInChildren<Transform>(true);
 				foreach (var t in transforms)
 				{
 					if (t == null || !t.gameObject.activeInHierarchy) continue;
 					string objName = t.name;
-					foreach (var known in KnownHats)
+					if (objName.StartsWith("Hat_", StringComparison.OrdinalIgnoreCase) || objName.Contains("Crown") || objName.Contains("Helmet") || objName.Contains("Bandana"))
 					{
-						if (objName.IndexOf(known, StringComparison.OrdinalIgnoreCase) >= 0)
-						{
-							hatName = known;
-							if (ch.IsLocal) SetLastLocalHatName(hatName);
-							return true;
-						}
+						hatName = objName;
+						if (ch.IsLocal) SetLastLocalHatName(hatName);
+						return true;
 					}
 				}
 			}
@@ -74,7 +79,7 @@ namespace PeakClassMod.Utils
 			}
 			catch { }
 
-			// --- SOURCE 3 : Mémoire locale ---
+			// --- SOURCE 3 : Mémoire locale persistée ---
 			if (ch.IsLocal && !string.IsNullOrEmpty(_lastLocalHatName) && _lastLocalHatName != "None")
 			{
 				hatName = _lastLocalHatName;

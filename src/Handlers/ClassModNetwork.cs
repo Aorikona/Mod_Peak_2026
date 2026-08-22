@@ -1,20 +1,19 @@
-﻿using Photon.Pun;
+using Photon.Pun;
 using Photon.Realtime;
 using System.Collections;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using PeakClassMod.Utils;
+using HarmonyLib;
 
 namespace PeakClassMod.Handlers
 {
 	public class ClassModNetwork : MonoBehaviourPun
 	{
 		private Character _character;
-		private bool _hasRequestedItems = false;
-		private static Dictionary<int, float> _hostGiveCooldown = new Dictionary<int, float>();
-		private static Dictionary<int, Character> _characterCache = new Dictionary<int, Character>();
+		private bool _hasGivenItemsForThisInstance = false;
 		private static Dictionary<int, string> _networkClasses = new Dictionary<int, string>();
-		public static HashSet<int> HasReceivedStartItems = new HashSet<int>();
 
 		private void Awake()
 		{
@@ -25,10 +24,9 @@ namespace PeakClassMod.Handlers
 
 		private void Start()
 		{
-			if (photonView != null && photonView.IsMine && !_hasRequestedItems)
+			if (photonView != null && photonView.IsMine && !_hasGivenItemsForThisInstance)
 			{
-				_hasRequestedItems = true;
-				StartCoroutine(RequestItemsRoutine());
+				StartCoroutine(GiveItemsRoutine());
 			}
 		}
 
@@ -36,24 +34,13 @@ namespace PeakClassMod.Handlers
 		{
 			if (_character?.photonView?.Owner != null)
 			{
-				int act = _character.photonView.Owner.ActorNumber;
-				_characterCache.Remove(act);
-				_networkClasses.Remove(act);
+				_networkClasses.Remove(_character.photonView.Owner.ActorNumber);
 			}
 		}
 
 		public static void ClearPlayerCache(int actorNumber)
 		{
-			_characterCache.Remove(actorNumber);
 			_networkClasses.Remove(actorNumber);
-			_hostGiveCooldown.Remove(actorNumber);
-			HasReceivedStartItems.Remove(actorNumber);
-		}
-
-		public static void ResetAllPlayerItemFlags()
-		{
-			HasReceivedStartItems.Clear();
-			_hostGiveCooldown.Clear();
 		}
 
 		public static string GetPlayerClass(Character ch)
@@ -73,18 +60,21 @@ namespace PeakClassMod.Handlers
 
 		public void TriggerStartItems()
 		{
-			_hasRequestedItems = false;
-			StartCoroutine(RequestItemsRoutine());
+			if (!_hasGivenItemsForThisInstance)
+			{
+				StartCoroutine(GiveItemsRoutine());
+			}
 		}
 
-		private IEnumerator RequestItemsRoutine()
+		private IEnumerator GiveItemsRoutine()
 		{
-			yield return new WaitForSeconds(ClassBalance.ITEM_REQUEST_DELAY);
+			if (_hasGivenItemsForThisInstance) yield break;
+
+			yield return new WaitForSeconds(1.0f);
 
 			if (_character == null) _character = GetComponent<Character>();
 
-			// Attend que les slots soient prêts
-			float timeout = 8f;
+			float timeout = 10f;
 			while (timeout > 0)
 			{
 				if (_character?.player != null && _character.player.itemSlots != null && _character.player.itemSlots.Length > 0)
@@ -93,85 +83,150 @@ namespace PeakClassMod.Handlers
 				yield return new WaitForSeconds(0.1f);
 			}
 
-			yield return new WaitForSeconds(0.5f);
+			yield return new WaitForSeconds(0.3f);
+
+			if (_hasGivenItemsForThisInstance) yield break;
+			_hasGivenItemsForThisInstance = true;
 
 			string myHatName = "None";
 			if (HatUtils.TryGetHatName(_character, out string d)) myHatName = d;
 
-			if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
+			GiveItemsLocally(myHatName);
+		}
+
+		private void Update()
+		{
+			if (_character == null || !_character.IsLocal || _character.player == null) return;
+
+			// Touche F8 pour purger le slot 0 (tempFullSlot) en cas de besoin
+			if (Input.GetKeyDown(KeyCode.F8))
 			{
-				photonView.RPC(nameof(RPC_HostGiveItems), RpcTarget.MasterClient, myHatName);
-			}
-			else
-			{
-				GiveItemsLocally(myHatName);
+				if (_character.player.tempFullSlot != null && !_character.player.tempFullSlot.IsEmpty())
+				{
+					_character.player.tempFullSlot.EmptyOut();
+					PeakClassModPlugin.Log?.LogInfo("[ClassMod] Slot 0 (tempFullSlot) purgé par l'utilisateur (F8).");
+				}
 			}
 		}
 
 		public void GiveItemsLocally(string hatName)
 		{
 			if (_character?.player == null) return;
-			var itemsToGive = PeakClassModPlugin.BuildStartItemsByHatName(hatName);
-			foreach (var itemName in itemsToGive)
+
+			// Nettoyage préventif du slot 0
+			if (_character.player.tempFullSlot != null && !_character.player.tempFullSlot.IsEmpty())
 			{
-				var item = ItemCache.Get(itemName);
-				if (item != null && _character.player.HasEmptySlot((ushort)item.itemID))
-				{
-					_character.player.AddItem((ushort)item.itemID, null, out _);
-				}
+				_character.player.tempFullSlot.EmptyOut();
 			}
-		}
 
-		[PunRPC]
-		public void RPC_HostGiveItems(string clientHatName, PhotonMessageInfo info)
-		{
-			if (!PhotonNetwork.IsMasterClient) return;
-			int actorID = info.Sender.ActorNumber;
-			if (HasReceivedStartItems.Contains(actorID)) return;
-
-			if (_hostGiveCooldown.TryGetValue(actorID, out float lastTime))
-				if (Time.time - lastTime < ClassBalance.ITEM_GIVE_COOLDOWN) return;
-
-			_hostGiveCooldown[actorID] = Time.time;
-			StartCoroutine(HostGiveItemsRoutine(clientHatName, info.Sender));
-		}
-
-		private IEnumerator HostGiveItemsRoutine(string hatName, Photon.Realtime.Player requestor)
-		{
 			var itemsToGive = PeakClassModPlugin.BuildStartItemsByHatName(hatName);
-			if (itemsToGive.Count == 0) yield break;
+			if (itemsToGive == null || itemsToGive.Count == 0) return;
 
-			Character targetChar = null;
-			int actorNumber = requestor.ActorNumber;
-
-			if (_characterCache.TryGetValue(actorNumber, out Character cachedChar) && cachedChar != null)
-				targetChar = cachedChar;
-			else
+			// Compte le nombre d'exemplaires demandés par item
+			var requestedCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+			foreach (var name in itemsToGive)
 			{
-				foreach (var ch in Character.AllCharacters)
+				if (!requestedCounts.ContainsKey(name)) requestedCounts[name] = 0;
+				requestedCounts[name]++;
+			}
+
+			foreach (var kvp in requestedCounts)
+			{
+				string itemName = kvp.Key;
+				int targetCount = kvp.Value;
+
+				var item = ItemCache.Get(itemName);
+				if (item == null) continue;
+
+				ushort id = (ushort)item.itemID;
+				int currentCount = CountItemInInventory(_character, id, itemName);
+				int needed = targetCount - currentCount;
+
+				for (int i = 0; i < needed; i++)
 				{
-					if (ch?.photonView?.Owner == requestor)
+					// Vérifie qu'il y a au moins un slot d'inventaire de base disponible (Slots 1, 2, 3)
+					bool hasBaseSlot = false;
+					if (_character.player.itemSlots != null)
 					{
-						targetChar = ch;
-						_characterCache[actorNumber] = ch;
-						break;
+						for (int s = 0; s < _character.player.itemSlots.Length; s++)
+						{
+							if (_character.player.itemSlots[s] != null && _character.player.itemSlots[s].IsEmpty())
+							{
+								hasBaseSlot = true;
+								break;
+							}
+						}
+					}
+
+					if (hasBaseSlot && _character.player.HasEmptySlot(id))
+					{
+						_character.player.AddItem(id, null, out _);
+						PeakClassModPlugin.Log?.LogInfo($"[ClassMod] Given starter item '{itemName}' (ID: {id}) ({i + 1}/{needed}) to {_character.name}");
 					}
 				}
 			}
 
-			if (targetChar?.player == null) yield break;
-
-			HasReceivedStartItems.Add(actorNumber);
-
-			foreach (var itemName in itemsToGive)
+			// S'assure que le slot 0 n'a pas été rempli
+			if (_character.player.tempFullSlot != null && !_character.player.tempFullSlot.IsEmpty())
 			{
-				var item = ItemCache.Get(itemName);
-				if (item != null && targetChar.player.HasEmptySlot((ushort)item.itemID))
-				{
-					targetChar.player.AddItem((ushort)item.itemID, null, out _);
-				}
-				yield return new WaitForSeconds(0.05f);
+				_character.player.tempFullSlot.EmptyOut();
 			}
+		}
+
+		public static int CountItemInInventory(Character ch, ushort itemID, string itemName)
+		{
+			if (ch == null || ch.player == null) return 0;
+			int count = 0;
+
+			// 1. Objet actuellement tenu en main
+			if (ch.data != null && ch.data.currentItem != null)
+			{
+				if (ch.data.currentItem.itemID == itemID || ch.data.currentItem.name.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0)
+					count++;
+			}
+
+			// 2. Inspection des slots de joueur
+			if (ch.player.itemSlots != null)
+			{
+				foreach (var slot in ch.player.itemSlots)
+				{
+					if (slot != null && !slot.IsEmpty())
+					{
+						if (slot.prefab != null && (slot.prefab.itemID == itemID || slot.prefab.name.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0))
+						{
+							count++;
+							continue;
+						}
+						string pName = slot.GetPrefabName();
+						if (!string.IsNullOrEmpty(pName) && pName.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0)
+						{
+							count++;
+						}
+					}
+				}
+			}
+
+			// 3. Inspection du sac à dos
+			if (ch.player.backpackSlot != null && !ch.player.backpackSlot.IsEmpty())
+			{
+				if (ch.player.backpackSlot.prefab != null && (ch.player.backpackSlot.prefab.itemID == itemID || ch.player.backpackSlot.prefab.name.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0))
+				{
+					count++;
+				}
+				else
+				{
+					string bpName = ch.player.backpackSlot.GetPrefabName();
+					if (!string.IsNullOrEmpty(bpName) && bpName.IndexOf(itemName, StringComparison.OrdinalIgnoreCase) >= 0)
+						count++;
+				}
+			}
+
+			return count;
+		}
+
+		public static bool HasItemInInventory(Character ch, ushort itemID, string itemName)
+		{
+			return CountItemInInventory(ch, itemID, itemName) > 0;
 		}
 
 		[PunRPC]
@@ -188,7 +243,15 @@ namespace PeakClassMod.Handlers
 			_character?.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Injury, amount, false, true, true);
 		}
 
-		[PunRPC] public void ShowMedicHealEffectRPC(int remainingHeals) { }
+		[PunRPC]
+		public void ShowMedicHealEffectRPC(int healsRemaining)
+		{
+			if (_character == null) _character = GetComponent<Character>();
+			if (_character?.refs?.customization != null)
+			{
+				_character.refs.customization.PulseStatus(new Color(0.2f, 1f, 0.4f, 1f), 1.5f);
+			}
+		}
 
 		[PunRPC]
 		public void RPC_SyncClassActivation(string className, int actorNumber)

@@ -1,32 +1,46 @@
-﻿using PeakClassMod;
+using PeakClassMod;
 using PeakClassMod.Utils;
-using System;
-using UnityEngine;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using UnityEngine;
 
 namespace PeakClassMod.Patches
 {
-    [HarmonyPatch(typeof(Item), "StartUseSecondary")]
-    [HarmonyPriority(Priority.High)]
-    public class GobelinFoodBlockerSecondary
-    {
-        static bool Prefix(Item __instance)
-        {
-            if (__instance == null || __instance.holderCharacter == null) return true;
+	[HarmonyPatch(typeof(Item), "StartUseSecondary")]
+	[HarmonyPriority(Priority.High)]
+	public class GobelinFoodBlockerSecondary
+	{
+		static bool Prefix(Item __instance)
+		{
+			if (__instance == null || __instance.holderCharacter == null) return true;
 
-            if (ClassCheckUtil.IsGobelin(__instance.holderCharacter))
-            {
-                if (__instance.GetComponent<Action_RestoreHunger>() != null &&
-                    GobelinDiet.IsPackagedFood(__instance)) // Nouvelle méthode
-                {
-                    return false; // Bloque l'action
-                }
-            }
-            return true;
-        }
-    }
+			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter) || (__instance.holderCharacter.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinDiet.IsPackagedFood(__instance))
+				{
+					return false; // Bloque l'action secondaire
+				}
+			}
+			return true;
+		}
+	}
+
+	[HarmonyPatch(typeof(Item), "CanUseSecondary")]
+	[HarmonyPriority(Priority.High)]
+	public class GobelinFoodBlockerSecondary_CanUse
+	{
+		static bool Prefix(Item __instance, ref bool __result)
+		{
+			if (__instance == null || __instance.holderCharacter == null) return true;
+
+			if (ClassCheckUtil.IsGobelin(__instance.holderCharacter) || (__instance.holderCharacter.IsLocal && ClassManager.IsGobelinActive()))
+			{
+				if (GobelinDiet.IsPackagedFood(__instance))
+				{
+					__result = false;
+					return false;
+				}
+			}
+			return true;
+		}
+	}
 }

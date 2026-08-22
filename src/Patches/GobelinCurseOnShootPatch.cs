@@ -1,24 +1,33 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using UnityEngine;
 using PeakClassMod.Utils;
 
 namespace PeakClassMod.Patches
 {
-	[HarmonyPatch(typeof(Item), "FinishCastPrimary")]
+	[HarmonyPatch(typeof(Item))]
 	public class GobelinCurseOnShootPatch
 	{
-		static void Postfix(Item __instance)
+		private static float _lastCurseShootTime = 0f;
+
+		[HarmonyPatch("FinishCastPrimary")]
+		[HarmonyPostfix]
+		static void FinishCastPostfix(Item __instance)
+		{
+			TriggerCurse(__instance);
+		}
+
+		private static void TriggerCurse(Item __instance)
 		{
 			if (__instance == null || __instance.holderCharacter == null) return;
 
-			if (__instance.holderCharacter.IsLocal && (ClassCheckUtil.IsGobelin(__instance.holderCharacter) || ClassManager.IsGobelinActive()))
+			var ch = __instance.holderCharacter;
+
+			if (ch.IsLocal && GobelinBlowgunEnforcer.IsBlowgun(__instance))
 			{
-				if (GobelinBlowgunEnforcer.IsBlowgun(__instance))
+				if (Time.time - _lastCurseShootTime > 0.2f)
 				{
-					__instance.holderCharacter.refs?.afflictions?.AddStatus(
-						CharacterAfflictions.STATUSTYPE.Curse,
-						ClassBalance.GOBELIN_CURSE_PER_SHOT,
-						false);
+					_lastCurseShootTime = Time.time;
+					GobelinBlowgunEnforcer.ApplyGobelinCurse(ch);
 				}
 			}
 		}

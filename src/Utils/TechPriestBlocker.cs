@@ -1,33 +1,43 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using UnityEngine;
 
 namespace PeakClassMod.Utils
 {
 	internal static class TechPriestBlocker
 	{
-		private static readonly string[] BlockedWords = new[]
+		private static readonly string[] HealingKeywords = new[]
 		{
 			"heal", "cure", "medicine", "restorehealth", "bandage", "firstaid",
-			"medkit", "marshmallow", "energy", "drink", "soda", "coffee", "potion", "salve", "pill"
+			"medkit", "salve", "pill", "healingpuff", "cure-all", "cureall"
 		};
 
-		public static bool ShouldBlockItem(Item item)
+		public static bool ShouldBlockSelfUse(Item item)
 		{
 			if (item == null) return false;
 
-			// 1. Bloque toute nourriture et endurance
-			if (item.GetComponent<Action_RestoreHunger>() != null || item.GetComponent<Action_GiveExtraStamina>() != null)
-				return true;
+			string rawName = (item.name ?? "").ToLowerInvariant();
+			string uiName = (item.UIData?.itemName ?? "").ToLowerInvariant();
 
-			// 2. Bloque les soins et boosts par mots-clés
-			string name = item.name.ToLowerInvariant();
-			foreach (var word in BlockedWords)
+			// 1. Bloque les items de soin pour soi-même
+			foreach (var word in HealingKeywords)
 			{
-				if (name.Contains(word)) return true;
+				if (rawName.Contains(word) || uiName.Contains(word))
+					return true;
 			}
 
-			// 3. Bloque les afflictions FasterBoi (boissons énergisantes)
+			// 2. Bloque la nourriture organique / naturelle pour soi-même
+			if (GobelinDiet.IsNaturalFood(item))
+			{
+				return true;
+			}
+
+			// 3. Bloque toute nourriture consommable directement
+			if (GobelinDiet.IsFood(item))
+			{
+				return true;
+			}
+
+			// 4. Bloque les boosts d'endurance et boissons énergisantes
 			var affAction = item.GetComponent<Action_ApplyAffliction>();
 			if (affAction != null && affAction.affliction != null)
 			{

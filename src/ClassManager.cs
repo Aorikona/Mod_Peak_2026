@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -9,7 +9,6 @@ namespace PeakClassMod
 	public static class ClassManager
 	{
 		private static readonly Dictionary<int, float> lastStaminaZeroTime = new Dictionary<int, float>();
-		private static readonly Dictionary<int, int> staminaZeroCount = new Dictionary<int, int>();
 		private static Coroutine _mushroomCoroutine;
 		private static Coroutine _greatEpeeEffectsCoroutine;
 		private static Coroutine _greatEpeeStaminaCoroutine;
@@ -30,7 +29,7 @@ namespace PeakClassMod
 			PeakClassModPlugin.scoutActive = false; PeakClassModPlugin.medicActive = false; PeakClassModPlugin.techPriestActive = false;
 			PeakClassModPlugin.mushroomancerActive = false; PeakClassModPlugin.greatEpeeActive = false; PeakClassModPlugin.rogueActive = false;
 			PeakClassModPlugin.generalActive = false; PeakClassModPlugin.astronautActive = false; PeakClassModPlugin.gobelinActive = false;
-			PeakClassModPlugin.wolfActive = false;
+			PeakClassModPlugin.wolfActive = false; PeakClassModPlugin.cookActive = false;
 			PeakClassModPlugin.currentClass = "None";
 		}
 
@@ -44,6 +43,7 @@ namespace PeakClassMod
 		public static void ActivateAstronautClass() { ResetAllFlags(); PeakClassModPlugin.astronautActive = true; PeakClassModPlugin.currentClass = "Astronaut"; }
 		public static void ActivateGobelinClass() { ResetAllFlags(); PeakClassModPlugin.gobelinActive = true; PeakClassModPlugin.currentClass = "Gobelin"; }
 		public static void ActivateWolfClass() { ResetAllFlags(); PeakClassModPlugin.wolfActive = true; PeakClassModPlugin.currentClass = "Wolf"; }
+		public static void ActivateCookClass() { ResetAllFlags(); PeakClassModPlugin.cookActive = true; PeakClassModPlugin.currentClass = "Cook"; }
 
 		public static void DeactivateAllClasses() { ResetAllFlags(); if (Character.localCharacter != null) Character.localCharacter.data.jumpsRemaining = 1; }
 
@@ -57,6 +57,7 @@ namespace PeakClassMod
 		public static bool IsAstronautActive() => PeakClassModPlugin.astronautActive;
 		public static bool IsGobelinActive() => PeakClassModPlugin.gobelinActive;
 		public static bool IsWolfActive() => PeakClassModPlugin.wolfActive;
+		public static bool IsCookActive() => PeakClassModPlugin.cookActive;
 
 		private static readonly string[] ZeroStaminaFungi = new[] { "ShelfShroom", "BounceShroom", "CloudFungus" };
 
@@ -79,29 +80,20 @@ namespace PeakClassMod
 
 		public static IEnumerator MushroomancerLocalStaminaWatch(Character character)
 		{
-			// Délai initial de 4s pour laisser le joueur charger son endurance à 100%
-			yield return new WaitForSeconds(4f);
-
-			bool wasAboveThreshold = true;
+			yield return new WaitForSeconds(6f);
+			bool wasAboveThreshold = false;
 
 			while (character != null && PeakClassModPlugin.mushroomancerActive && character.IsLocal)
 			{
-				bool isKnockedOut = false;
-				if (character.data != null)
-				{
-					if (character.data.passedOut || character.data.fullyPassedOut || character.data.dead)
-						isKnockedOut = true;
-				}
-
+				bool isKnockedOut = character.data != null && (character.data.passedOut || character.data.fullyPassedOut || character.data.dead);
 				float currentStam = character.data != null ? character.data.currentStamina : 1f;
 
-				if (currentStam > 0.20f)
+				if (currentStam > 0.70f)
 				{
 					wasAboveThreshold = true;
 				}
 
-				// Ne donne un champignon QUE si le joueur avait de l'endurance et vient de la vider
-				if (!isKnockedOut && wasAboveThreshold && currentStam <= 0.02f)
+				if (!isKnockedOut && wasAboveThreshold && currentStam <= 0.03f)
 				{
 					wasAboveThreshold = false;
 					TryActivateStaminaZeroMechanic(character);
@@ -113,40 +105,33 @@ namespace PeakClassMod
 
 		public static void TryActivateStaminaZeroMechanic(Character character)
 		{
-			if (character?.photonView?.Owner == null) return;
-			int actor = character.photonView.Owner.ActorNumber;
-			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < ClassBalance.MUSHROOM_STAMINA_COOLDOWN) return;
+			if (character == null) return;
+			int actor = character.photonView?.Owner != null ? character.photonView.Owner.ActorNumber : 0;
+
+			if (lastStaminaZeroTime.TryGetValue(actor, out var last) && Time.time - last < 2.5f) return;
 			lastStaminaZeroTime[actor] = Time.time;
 
-			if (!staminaZeroCount.ContainsKey(actor)) staminaZeroCount[actor] = 0;
-			staminaZeroCount[actor]++;
-
-			if (staminaZeroCount[actor] % 2 == 0)
-			{
-				character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MUSHROOM_CURSE_AMOUNT, false);
-			}
+			// Application garantie de la malédiction à chaque épuisement d'endurance
+			character.refs?.afflictions?.AddStatus(CharacterAfflictions.STATUSTYPE.Curse, ClassBalance.MUSHROOM_CURSE_AMOUNT, false);
 
 			string randomName = ZeroStaminaFungi[UnityEngine.Random.Range(0, ZeroStaminaFungi.Length)];
 			Item fungusItem = ItemCache.Get(randomName);
 			if (fungusItem == null) return;
 			ushort id = (ushort)fungusItem.itemID;
 
-			if (character != null)
-			{
-				character.StartCoroutine(MushroomancerGiveItemDelayed(character, id));
-			}
+			character.StartCoroutine(MushroomancerGiveItemDelayed(character, id));
 		}
 
 		private static IEnumerator MushroomancerGiveItemDelayed(Character character, ushort itemId)
 		{
-			float timeout = 5f;
+			float timeout = 4f;
 			while (character != null && character.data != null && (!character.data.isGrounded || character.data.isSprinting) && timeout > 0)
 			{
 				timeout -= 0.1f;
 				yield return new WaitForSeconds(0.1f);
 			}
 
-			if (character != null && character.player != null && character.player.itemSlots != null)
+			if (character?.player != null && character.player.itemSlots != null)
 			{
 				bool hasSpaceInBaseSlots = false;
 				int maxSlotsToCheck = Mathf.Min(3, character.player.itemSlots.Length);

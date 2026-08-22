@@ -4,7 +4,6 @@ using PeakClassMod.Utils;
 using System;
 using UnityEngine;
 using HarmonyLib;
-using Photon.Pun;
 using System.Collections;
 
 namespace PeakClassMod.Patches
@@ -14,23 +13,15 @@ namespace PeakClassMod.Patches
 	{
 		static void Postfix()
 		{
-			// Réinitialise pour permettre le spawn des objets sur l'île
-			ClassModNetwork.ResetAllPlayerItemFlags();
-			PeakClassModPlugin.Instance?.StartCoroutine(ReTriggerItemsOnIsland());
+			PeakClassModPlugin.Instance?.StartCoroutine(ReApplyClassOnIsland());
 		}
 
-		private static IEnumerator ReTriggerItemsOnIsland()
+		private static IEnumerator ReApplyClassOnIsland()
 		{
-			yield return new WaitForSeconds(2.0f);
+			yield return new WaitForSeconds(1.5f);
 			var lc = Character.localCharacter;
 			if (lc != null)
 			{
-				var net = lc.GetComponent<ClassModNetwork>();
-				if (net != null)
-				{
-					net.TriggerStartItems();
-				}
-
 				var watcher = lc.GetComponent<ClassWatcherHandler>();
 				if (watcher != null)
 				{

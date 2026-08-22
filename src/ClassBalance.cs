@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -61,5 +61,8 @@ namespace PeakClassMod
         public const float WOLF_SPRINT_SPEED_MULT = 1.3f;
         public const float WOLF_HUNGER_MULT = 1.3f;
         public const float WOLF_EFFECT_TICK_INTERVAL = 3f;
+
+        public const float COOK_HUNGER_MULT = 1.30f;
+        public const float COOK_STAMINA_BONUS = 0.25f;
     }
 }

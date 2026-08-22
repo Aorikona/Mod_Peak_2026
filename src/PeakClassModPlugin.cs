@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using BepInEx;
 using BepInEx.Logging;
@@ -25,6 +25,7 @@ namespace PeakClassMod
 		public static bool astronautActive = false;
 		public static bool gobelinActive = false;
 		public static bool wolfActive = false;
+		public static bool cookActive = false;
 		public static string currentClass = "None";
 
 		private GameObject _callbacksGO;
@@ -87,6 +88,11 @@ namespace PeakClassMod
 			{
 				items.Add("HealingDart Variant");
 				items.Add("MagicBean");
+			}
+			else if (hatName.IndexOf("Chef", StringComparison.OrdinalIgnoreCase) >= 0 ||
+					 hatName.IndexOf("Cook", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				items.Add("portablestovetopitem");
 			}
 
 			return items;

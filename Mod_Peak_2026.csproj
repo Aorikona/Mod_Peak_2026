@@ -60,6 +60,18 @@
       <HintPath>$(PeakManagedDir)\UnityEngine.ImageConversionModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(PeakManagedDir)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(PeakManagedDir)\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Sirenix.Serialization">
+      <HintPath>$(PeakManagedDir)\Sirenix.Serialization.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="Unity.TextMeshPro">
       <HintPath>$(PeakManagedDir)\Unity.TextMeshPro.dll</HintPath>
       <Private>False</Private>
@@ -151,5 +163,10 @@
       <Private>False</Private>
     </Reference>
   </ItemGroup>
+
+  <!-- Copie automatique vers le dossier de mods de PEAK après chaque compilation -->
+  <Target Name="AutoDeployToPeak" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="F:\Steam\steamapps\common\PEAK\BepInEx\plugins\" ContinueOnError="true" />
+  </Target>
 
 </Project>
