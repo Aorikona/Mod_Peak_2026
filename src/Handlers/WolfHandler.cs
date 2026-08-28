@@ -29,6 +29,7 @@ namespace PeakClassMod.Handlers
         private float _baseClimbSpeed;
         private float _baseSprintSpeed;
         private float _nextEffectTime = 0f;
+        private HashSet<Character> _alreadyHit = new HashSet<Character>();
         private CharacterController _cc;
 
         private TextMeshProUGUI _timeTextComponent;
@@ -213,7 +214,7 @@ namespace PeakClassMod.Handlers
             Collider[] hitColliders =
                 Physics.OverlapSphere(GetEffectCenterPosition(), EFFECT_RADIUS);
 
-            HashSet<Character> alreadyHit = new HashSet<Character>();
+            _alreadyHit.Clear();
 
             foreach (var hit in hitColliders)
             {
@@ -225,10 +226,10 @@ namespace PeakClassMod.Handlers
                 if (other == _character)
                     continue;
 
-                if (alreadyHit.Contains(other))
+                if (_alreadyHit.Contains(other))
                     continue;
 
-                alreadyHit.Add(other);
+                _alreadyHit.Add(other);
 
                 float now = Time.time;
 
@@ -264,7 +265,7 @@ namespace PeakClassMod.Handlers
             Collider[] hitColliders =
                 Physics.OverlapSphere(GetEffectCenterPosition(), EFFECT_RADIUS);
 
-            HashSet<Character> alreadyHit = new HashSet<Character>();
+            _alreadyHit.Clear();
 
             foreach (var hit in hitColliders)
             {
@@ -276,10 +277,10 @@ namespace PeakClassMod.Handlers
                 if (other == _character)
                     continue;
 
-                if (alreadyHit.Contains(other))
+                if (_alreadyHit.Contains(other))
                     continue;
 
-                alreadyHit.Add(other);
+                _alreadyHit.Add(other);
 
                 float now = Time.time;
 

@@ -10,6 +10,8 @@ namespace PeakClassMod.Patches
     [HarmonyPatch(typeof(Item), "Update")]
     public class GobelinBlowgunEnforcer
     {
+        private static System.Reflection.FieldInfo _destroyOnUseField = AccessTools.Field(typeof(Item), "destroyOnUse");
+
         static void Postfix(Item __instance)
         {
             // Sécurité de base
@@ -27,12 +29,10 @@ namespace PeakClassMod.Patches
                     // A. Logique Infini (Seulement Local pour éviter conflits réseau)
                     if (holder.IsLocal)
                     {
-                        var trav = Traverse.Create(__instance);
-                        var field = trav.Field("destroyOnUse");
                         // On force la NON-destruction
-                        if (field.FieldExists() && field.GetValue<bool>() == true)
+                        if (_destroyOnUseField != null && (bool)_destroyOnUseField.GetValue(__instance) == true)
                         {
-                            field.SetValue(false);
+                            _destroyOnUseField.SetValue(__instance, false);
                         }
 
                         // On force les munitions à -1 (infini)
@@ -44,7 +44,7 @@ namespace PeakClassMod.Patches
                                 if (usesData != null && usesData.Value != -1) usesData.Value = -1;
                             }
                         }
-                        catch { }
+                        catch (System.Exception ex) { PeakClassModPlugin.Log?.LogError(ex); }
                     }
 
                     // B. Logique Soulbound (Restrictions d'inventaire)
@@ -77,12 +77,10 @@ namespace PeakClassMod.Patches
 
                     // 2. RETIRER L'INFINI (Correction du bug pour les autres joueurs)
                     // On remet la destruction active
-                    var trav = Traverse.Create(__instance);
-                    var field = trav.Field("destroyOnUse");
-                    if (field.FieldExists())
+                    if (_destroyOnUseField != null)
                     {
                         // On remet à TRUE (l'objet doit se détruire après usage pour les non-Gobelins)
-                        field.SetValue(true);
+                        _destroyOnUseField.SetValue(__instance, true);
                     }
 
                     // On remet les munitions à 1 (usage unique) si elles étaient à -1
@@ -97,7 +95,7 @@ namespace PeakClassMod.Patches
                             }
                         }
                     }
-                    catch { }
+                    catch (System.Exception ex) { PeakClassModPlugin.Log?.LogError(ex); }
                 }
             }
         }
